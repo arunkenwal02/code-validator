@@ -1,5 +1,6 @@
 import requests
-import re 
+import re
+import streamlit as st
 
 def get_repo_info(url):
     """
@@ -16,35 +17,29 @@ def get_repo_info(url):
         return owner, repo_name
     return None
 
-def fetch_commits(owner, repo_name, token):
-    """Fetches commit history for a given repository using a token."""
-    headers = {"Authorization": f"token {token}"}
-    
+def fetch_commits(owner, repo_name):
+    """Fetches commit history for a given repository (no token)."""
     api_url = f"https://api.github.com/repos/{owner}/{repo_name}/commits"
-    
+
     try:
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status() # Raise an exception for HTTP errors
+        response = requests.get(api_url)
+        response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching commits: {e}. Check URL or GitHub Token permissions.")
+        st.error(f"Error fetching commits: {e}. Check URL or rate limits.")
         return None
 
-def fetch_commit_diff(owner, repo_name, sha, token):
-    """Fetches the diff for a specific commit SHA using a token."""
-    headers = {
-        "Accept": "application/vnd.github.v3.diff",
-        "Authorization": f"token {token}"
-    }
-
+def fetch_commit_diff(owner, repo_name, sha):
+    """Fetches the diff for a specific commit SHA (no token)."""
+    headers = {"Accept": "application/vnd.github.v3.diff"}
     api_url = f"https://api.github.com/repos/{owner}/{repo_name}/commits/{sha}"
-    
+
     try:
         response = requests.get(api_url, headers=headers)
         response.raise_for_status()
-        return response.text 
+        return response.text
     except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching diff for commit {sha}: {e}. Check GitHub Token permissions.")
+        st.error(f"Error fetching diff for commit {sha}: {e}.")
         return None
 
 def format_diff_for_streamlit(diff_text):
@@ -53,22 +48,22 @@ def format_diff_for_streamlit(diff_text):
     showing only added/deleted lines, with improved filtering for .ipynb JSON.
     """
     formatted_lines = []
-    in_hunk = False 
+    in_hunk = False
     is_ipynb = False
 
     for line in diff_text.splitlines():
         if line.startswith('diff --git'):
             formatted_lines.append(f"<pre style='color: white; background-color: #333; padding: 5px; border-radius: 5px; font-weight: bold;'>{line}</pre>")
-            in_hunk = False 
-            is_ipynb = '.ipynb' in line 
+            in_hunk = False
+            is_ipynb = '.ipynb' in line
         elif line.startswith('--- a/') or line.startswith('+++ b/'):
             continue
         elif line.startswith('@@'):
             in_hunk = True
-            continue 
+            continue
         elif in_hunk:
             if line.startswith('+'):
-                html_color = "#008000" 
+                html_color = "#008000"
                 if is_ipynb:
                     match = re.match(r'^\+\s*"((?:[^"\\]|\\.)*)\\n",?$', line)
                     if match:
@@ -79,7 +74,7 @@ def format_diff_for_streamlit(diff_text):
                 else:
                     formatted_lines.append(f"<span style='color:{html_color};'>{line}</span>")
             elif line.startswith('-'):
-                html_color = "#FF0000" # Red
+                html_color = "#FF0000"
                 if is_ipynb:
                     match = re.match(r'^\-\s*"((?:[^"\\]|\\.)*)\\n",?$', line)
                     if match:
@@ -89,15 +84,8 @@ def format_diff_for_streamlit(diff_text):
                         formatted_lines.append(f"<span style='color:{html_color};'>{line}</span>")
                 else:
                     formatted_lines.append(f"<span style='color:{html_color};'>{line}</span>")
-            # Context lines (starting with space) are still filtered out
-        else:
-            # Lines before the first '@@' or other non-code diff lines are skipped
-            continue
 
     if not formatted_lines:
         return "No significant code changes detected (only metadata or context lines filtered out)."
-        
-  
-    return f"<pre style='background-color: #262626; padding: 10px; border-radius: 8px; overflow-x: auto;'>{'<br>'.join(formatted_lines)}</pre>"
 
-## hi everyone
+    return f"<pre style='background-color: #262626; padding: 10px; border-radius: 8px; overflow-x: auto;'>{'<br>'.join(formatted_lines)}</pre>"

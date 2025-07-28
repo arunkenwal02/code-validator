@@ -1,5 +1,5 @@
 import streamlit as st
-from globalfuc import *
+from globalfunc import *
 
 st.set_page_config(layout="wide", page_title="GitHub Repo Code Validator & Viewer")
 
@@ -41,7 +41,7 @@ if submit_button:
         st.markdown("---")
         st.subheader("Commit History")
 
-        commits = fetch_commits(owner, repo_name, github_token) 
+        commits = fetch_commits(owner, repo_name) 
         
         if commits:
             for commit in commits:
@@ -57,7 +57,7 @@ if submit_button:
                 
                 # --- Display Code Difference Directly (No Expander) ---
                 # st.markdown(f"**Code Difference for Commit `{sha[:7]}`:**")
-                diff_text = fetch_commit_diff(owner, repo_name, sha, github_token)
+                diff_text = fetch_commit_diff(owner, repo_name, sha)
                 if diff_text:
                     # Use st.markdown with unsafe_allow_html=True for HTML rendering
                     st.markdown(format_diff_for_streamlit(diff_text), unsafe_allow_html=True) 
