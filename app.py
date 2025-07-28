@@ -11,20 +11,19 @@ github_repo_url = st.text_input(
 )
 
 
-github_token = st.secrets.get("GITHUB_TOKEN")
+# github_token = st.secrets.get("GITHUB_TOKEN")
 
-if not github_token:
-    st.error("GitHub Token not found in Streamlit secrets. "
-             "API rate limits will be very low, and access to private repositories will fail. "
-             "Please add `GITHUB_TOKEN = \"your_pat_here\"` to your `.streamlit/secrets.toml` file.")
-    st.stop() 
+# if not github_token:
+#     st.error("GitHub Token not found in Streamlit secrets. "
+#              "API rate limits will be very low, and access to private repositories will fail. "
+#              "Please add `GITHUB_TOKEN = \"your_pat_here\"` to your `.streamlit/secrets.toml` file.")
+#     st.stop() 
 
 
 submit_button = st.button("Fetch Repo Details")
 
 
 if submit_button:
-    # Ensure the URL is provided before proceeding
     if not github_repo_url:
         st.warning("Please enter a GitHub repository URL.")
         st.stop()
