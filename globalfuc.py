@@ -100,3 +100,4 @@ def format_diff_for_streamlit(diff_text):
   
     return f"<pre style='background-color: #262626; padding: 10px; border-radius: 8px; overflow-x: auto;'>{'<br>'.join(formatted_lines)}</pre>"
 
+## hi everyone
