@@ -1,7 +1,6 @@
 import streamlit as st
 from globalfuc import *
 
-
 st.set_page_config(layout="wide", page_title="GitHub Repo Code Validator & Viewer")
 
 st.title("Code-Validator-and-Deployer-Agent")
@@ -25,6 +24,7 @@ submit_button = st.button("Fetch Repo Details")
 
 
 if submit_button:
+    # Ensure the URL is provided before proceeding
     if not github_repo_url:
         st.warning("Please enter a GitHub repository URL.")
         st.stop()
@@ -36,6 +36,7 @@ if submit_button:
     else:
         owner, repo_name = repo_info
         st.subheader(f"Repository: {owner}/{repo_name}")
+        # st.write(f"Project Name: {project_name}") # Project name is commented out in your provided code
 
         st.markdown("---")
         st.subheader("Commit History")
@@ -55,7 +56,7 @@ if submit_button:
                 st.markdown(f"**Message:** {message}")
                 
                 # --- Display Code Difference Directly (No Expander) ---
-                st.markdown(f"**Code Difference for Commit `{sha[:7]}`:**")
+                # st.markdown(f"**Code Difference for Commit `{sha[:7]}`:**")
                 diff_text = fetch_commit_diff(owner, repo_name, sha, github_token)
                 if diff_text:
                     # Use st.markdown with unsafe_allow_html=True for HTML rendering
