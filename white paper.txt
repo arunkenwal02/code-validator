@@ -8,10 +8,13 @@ Featres:
 Models Name:
     - Logistic Regression
 
+Hyperparameters:
+
+
 Validation Matrics:  
-    - Accuracy
-    - Precision
-    - Recall
-    - F1
+    - Accuracy :90%
+    - Precision : 90%
+    - Recall : 85%
+    - F1 : 88%
 
 
