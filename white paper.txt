@@ -1,0 +1,20 @@
+Following are the features needs to be implement as classification :
+
+Featres:
+    - sepal width (cm)
+    - petal length (cm)
+    - petal width (cm)
+
+Models Name:
+    - Logistic Regression
+
+Hyperparameters:
+
+
+Validation Matrics:  
+    - Accuracy :90%
+    - Precision : 90%
+    - Recall : 85%
+    - F1 : 88%
+
+
