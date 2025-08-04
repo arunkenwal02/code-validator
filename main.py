@@ -14,7 +14,7 @@ from chromadb.config import Settings
 import tempfile
 
 client = chromadb.Client(Settings())
-
+# check commits
 load_dotenv()
 import streamlit as st
 import fitz
