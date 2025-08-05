@@ -27,7 +27,7 @@ llm = ChatOpenAI(model="gpt-4o",
                  openai_api_key= openai_api_key)
 
 embedding_model = OpenAIEmbeddings(model="text-embedding-3-small") 
-
+# 
 
 
 def read_notebook(file_path):
@@ -102,15 +102,14 @@ def refine_extracted_elements_with_context(similar_elements, query_context):
         The original query context is:
         "{query_context}"
 
-        
-        - **Objective**: Refine query context and extract only the most relevant functionalities and insights.
-        - **Instructions**:
-        - Analyze the query context to determine the user's intent.
         - Identify and extract only the most relevant elements or functionalities.
-        - Provide concise, bullet-pointed outputs or insights based on retrieved data.
         - Avoid verbose explanations; focus on clarity and precision.
+        - Extract details from given context keep length short in summary format 
+        - Do dot recomment only extract
+        - Extract relevant scores, metrics and model name if avalialbe in context and 
+        - Provide concise, bullet-pointed outputs or insights based on retrieved data.
         - Format the response using IPython Markdown style for readability
-        
+
         """)
     ]
     return llm(prompt).content.strip()
@@ -126,10 +125,16 @@ def compare_functionalities(whitepaper_funcs, code_funcs):
 
         Code Functionalities:
         {code_funcs}
-        
-        compare elements of white paper with code funcs and note it down with each respect. 
-        1.Track and summarize each change in feature selection, model selection, validation metrics 
+        Compare each functionality described in the white paper with the corresponding code implementation. For every element, document whether it is implemented, partially implemented, or missing in the code.
 
+        Then, provide a detailed summary covering the following:
+        1. Model selection changes (if any)
+        2. Validation metrics and performance score differences
+        3. Modifications in hyperparameters
+        4. Additions or removals in features used
+
+        Finally, conclude with a clear summary. If the code implementation does not align with the white paper, explicitly state:
+        “White paper needs to be updated” or “Code is not aligned with the current white paper.”
       
         """)
             ]
@@ -244,12 +249,31 @@ def summarize(whitepaper_text):
 
         {whitepaper_text}
          
-        summarise the context from notebook and white paper, remove duplicate details and condense in form of report structure 
-        1. Keep model used in notebook and white paper
-        2. Keep validation metrics and scores from white paper and notebook
-        3. Keep hyperparameters 
-        If white paper and code are not align, add in summary, white paper is not aligh with code, please update white paper.
-  
+        Give brief objectivw of white paper at top. Summarize and condense the content from both the notebook and the white paper into a structured report. Remove any duplicate information and present the findings in a clear, organized format.
+
+            Report Structure:
+            1. Model Overview
+                - Extract and compare model information from the notebook and white paper.
+                - Highlight differences or similarities in:
+                - Feature selection and feature engineering
+                - Model architecture or type
+                - Data splitting strategy
+                - Baseline metrics
+                - Fallback mechanisms (if any)
+                - Data import and preprocessing steps
+                - Handling of imbalanced data (if discussed)
+
+            2. Validation Metrics
+                - ompile validation metrics and scores from both the white paper and the notebook.
+                - Highlight any discrepancies.
+
+            3. Hyperparameter Configuration
+                - List hyperparameters used in the model(s) from both sources.
+                - Note any mismatches or changes.
+
+            4. Final Summary
+                - Clearly state whether the notebook and white paper are aligned.
+                - If not, include the note: "White paper is not aligned with the code. Please update the white paper accordingly."
         """)
             ]
     return llm(prompt).content.strip()
@@ -273,7 +297,6 @@ queries = [
             "List of Hyper parameters and respective values",
             "What are list of validation scores and the performance scores?",
             "Ethical considerations" ]
-
 
 def main():
     st.set_page_config(page_title="Functionality Coverage Checker", layout="wide")
@@ -307,8 +330,10 @@ def main():
         
 
             # for ele in list_refine_context_from_extracted_element_from_pdf:
-            #display(Markdown(ele))
-            #print("-------------------------------------")
+            #     print("Context extracted from pdf")
+            #     st.write('Context extracted from pdf', ele)
+            #     (print(ele))
+            #     print("-------------------------------------")
             
             # Handle .ipynb or other code files
             if uploaded_code.name.endswith(".ipynb"):
@@ -340,8 +365,10 @@ def main():
                     list_refine_context_from_extracted_element_from_markdown.append(refine_context_from_extracted_element_from_notebook)
                     
                 # for ele in list_refine_context_from_extracted_element_from_markdown:
-                    # display(Markdown(ele))
-                    # print("-----------------")
+                #     print("Context extracted from markdown")
+                #     print(ele)
+                #     st.write('Context extracted from markdown', ele)
+                #     print("-----------------")
                     
             else:
                 code = uploaded_code.read().decode("utf-8")
@@ -352,24 +379,16 @@ def main():
                 list_missing_funcs.append(compare_functionalities(list_refine_context_from_extracted_element_from_pdf[i], list_refine_context_from_extracted_element_from_markdown[i]))
 
             # for ele in list_missing_funcs:
-           
-                # Markdown(ele)
-                # print("------------------------------------------------")
+            #     print("Missing functionality")
+            #     print(ele)
+            #     st.write('Missing functionality ', ele)
+            #     print("------------------------------------------------")
                 
             list_missing_funcs = "\n\n".join(list_missing_funcs)
             st.write('Summarizing report findings')
             output = summarize(list_missing_funcs)
 
             st.write(output)
-            
-            
-            # whitepaper_funcs = extract_functionalities_from_whitepaper(whitepaper)
-
-            # st.markdown("### ⚖️ Comparing Functionalities")
-            # missing_funcs = compare_functionalities(whitepaper_funcs, code_funcs)
-            # st.markdown(missing_funcs)
-            
-            
 
 if __name__ == "__main__":
     main()
