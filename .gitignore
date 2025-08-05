@@ -3,3 +3,5 @@
 /venv
 .streamlit/
 .env
+main copy.py
+main_optimized.py

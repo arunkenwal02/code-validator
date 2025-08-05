@@ -3,94 +3,118 @@ import nbformat
 from openai import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
-from langchain.chat_models import ChatOpenAI
-from langchain.schema import SystemMessage, HumanMessage
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import chromadb
 from chromadb.config import Settings
 
-import tempfile
-
-client = chromadb.Client(Settings())
-# check commits
-# hello 
-load_dotenv()
 import streamlit as st
 import fitz
+import tempfile
+import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
+llm = ChatOpenAI(model="gpt-4o", temperature=0, openai_api_key=openai_api_key)
+embedding_model = OpenAIEmbeddings(model="text-embedding-3-small")
 
-# Initialize LLM
-llm = ChatOpenAI(model="gpt-4o",  
-                 temperature=0,
-                 openai_api_key= openai_api_key)
+chroma_client = chromadb.PersistentClient(path="./chroma_openai1")
 
-embedding_model = OpenAIEmbeddings(model="text-embedding-3-small") 
-# 
+def get_file_hash(uploaded_file):
+    uploaded_file.seek(0)
+    hash_val = hashlib.sha256(uploaded_file.read()).hexdigest()
+    uploaded_file.seek(0)
+    return hash_val
+
+def collection_exists(collection_name):
+    try:
+        chroma_client.get_collection(collection_name)
+        return True
+    except Exception:
+        return False
+
+def store_in_chromaDB(chunks, embeddings, collection_name):
+    if collection_exists(collection_name):
+        return chroma_client.get_collection(collection_name)
+    collection = chroma_client.get_or_create_collection(name=collection_name)
+    collection.add(
+        documents=chunks,
+        embeddings=embeddings,
+        ids=[f"chunk-{i}" for i in range(len(chunks))]
+    )
+    return collection
 
 
-def read_notebook(file_path):
-    """Read .ipynb notebook and extract content."""
+def create_chunks(text):
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=750,     # faster, smaller chunk
+        chunk_overlap=100   # reduced overlap
+    )
+    return text_splitter.split_text(text)
+
+
+@st.cache_resource(show_spinner="Generating/retrieving embeddings...")
+def get_or_create_embeddings(uploaded_file, text, _embedding_model, collection_name):
+    chunks = create_chunks(text)
+
+    if collection_exists(collection_name):
+        collection = chroma_client.get_collection(collection_name)
+    else:
+        embeddings = _embedding_model.embed_documents(chunks)
+        collection = store_in_chromaDB(chunks, embeddings, collection_name)
+
+    return collection, chunks
+
+
+def extract_from_pdf(uploaded_file):
+    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+    extracted_text = ""
+    for page_num, page in enumerate(doc):
+        text = page.get_text()
+        extracted_text += f"\n\n--- Page {page_num + 1} ---\n{text}"
+    return extracted_text
+
+
+def read_notebook_with_outputs(file_path):
     nb = nbformat.read(file_path, as_version=4)
-    content = []
+    cells_content = []
     for cell in nb.cells:
         if cell.cell_type == 'markdown':
-            content.append("## Markdown Cell:\n" + cell.source)
+            cells_content.append(f"## Markdown Cell:\n{cell.source}")
         elif cell.cell_type == 'code':
-            content.append("## Code Cell:\n```python\n" + cell.source + "\n```")
-    return "\n\n".join(content)
+            code = f"## Code Cell:\n```python\n{cell.source}\n```"
+            outputs = []
+            for output in cell.get("outputs", []):
+                if output.output_type == "stream":
+                    outputs.append(f"Output (stream):\n{output.text}")
+                elif output.output_type == "execute_result":
+                    result = output.get("data", {}).get("text/plain", "")
+                    outputs.append(f"Output (execute_result):\n{result}")
+                elif output.output_type == "error":
+                    outputs.append("Error:\n" + "\n".join(output.get("traceback", [])))
+            full_output = "\n".join(outputs)
+            if full_output:
+                code += f"\n\n### Output:\n```\n{full_output}\n```"
+            cells_content.append(code)
+    return "\n\n".join(cells_content)
+
+def queryFun_parallel(queries, embedding_model, collection):
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(queryFun, query, embedding_model, collection) for query in queries]
+        return [future.result() for future in as_completed(futures)]
 
 
-def read_file(file_path):
-    """Reads the content of a file."""
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
-
-
-def extract_functionalities_from_code(notebook_content):
-
-    """Uses LLM to extract functionalities from Python code."""
-    prompt = f"""
-    You are an expert Python code reviewer. Here is a Jupyter notebook:
-    {notebook_content}
-
-    The following is a Jupyter notebook content (code and markdown). 
-    Please extract the following:
-    Analyze the notebook and answer:
-
-    1. List of features used in the model.
-    2. Name/type of ML model used, only name of model
-    3. Accuracy metrics (e.g., accuracy, F1, precision, recall, AUC, etc.), only metrics name. 
-    4. What is the purpose of this notebook?
-    5. What are the main operations and their results?
-    6. Are there any errors or anomalies in outputs?
-    7. What conclusions can be drawn from the outputs?
-
-    """
-
-    response = llm.invoke([SystemMessage(content="You are a helpful assistant."), HumanMessage(content=prompt)])
-
-    return response.content.strip()
-
-
-def extract_functionalities_from_whitepaper(whitepaper_text):
-    """Uses LLM to extract functionalities from whitepaper."""
-    prompt = [
-        SystemMessage(content="You are a product analyst."),
-        HumanMessage(content=f"""
-        Here is the whitepaper or product requirement document:
-
-        {whitepaper_text}
-
-        List all functionalities or features the whitepaper mentions. Use bullet points.
-        """)
-            ]
-    return llm(prompt).content.strip()
+def queryFun(query, embedding_model, collection):
+    query_embedding = embedding_model.embed_query(query)
+    results = collection.query(query_embeddings=[query_embedding], n_results=5)
+    l_docs = [doc for doc in results["documents"][0]]
+    return l_docs
 
 
 def refine_extracted_elements_with_context(similar_elements, query_context):
-    """Uses LLM to refine extracted elements based on query context."""
     combined_elements = "\n\n".join(similar_elements)
     prompt = [
         SystemMessage(content="You are a product analyst."),
@@ -105,8 +129,8 @@ def refine_extracted_elements_with_context(similar_elements, query_context):
         - Identify and extract only the most relevant elements or functionalities.
         - Avoid verbose explanations; focus on clarity and precision.
         - Extract details from given context keep length short in summary format 
-        - Do dot recomment only extract
-        - Extract relevant scores, metrics and model name if avalialbe in context and 
+        - Do not recommend, only extract
+        - Extract relevant scores, metrics and model name if available in context and 
         - Provide concise, bullet-pointed outputs or insights based on retrieved data.
         - Format the response using IPython Markdown style for readability
 
@@ -114,9 +138,7 @@ def refine_extracted_elements_with_context(similar_elements, query_context):
     ]
     return llm(prompt).content.strip()
 
-
 def compare_functionalities(whitepaper_funcs, code_funcs):
-    """Compares two sets of functionalities using the LLM."""
     prompt = [
         SystemMessage(content="You are a software QA expert."),
         HumanMessage(content=f"""
@@ -137,111 +159,10 @@ def compare_functionalities(whitepaper_funcs, code_funcs):
         “White paper needs to be updated” or “Code is not aligned with the current white paper.”
       
         """)
-            ]
+    ]
     return llm(prompt).content.strip()
 
-
-def read_notebook_with_outputs(file_path):
-    """Read .ipynb notebook and include both code and output."""
-    nb = nbformat.read(file_path, as_version=4)
-    cells_content = []
-
-    for cell in nb.cells:
-        if cell.cell_type == 'markdown':
-            cells_content.append(f"## Markdown Cell:\n{cell.source}")
-        elif cell.cell_type == 'code':
-            code = f"## Code Cell:\n```python\n{cell.source}\n```"
-            outputs = []
-
-            for output in cell.get("outputs", []):
-                if output.output_type == "stream":
-                    outputs.append(f"Output (stream):\n{output.text}")
-                elif output.output_type == "execute_result":
-                    # Display the result of the cell (e.g., print(2+2))
-                    result = output.get("data", {}).get("text/plain", "")
-                    outputs.append(f"Output (execute_result):\n{result}")
-                elif output.output_type == "error":
-                    outputs.append("Error:\n" + "\n".join(output.get("traceback", [])))
-
-            full_output = "\n".join(outputs)
-            if full_output:
-                code += f"\n\n### Output:\n```\n{full_output}\n```"
-            cells_content.append(code)
-
-    return "\n\n".join(cells_content)
-
-
-def read_notebook(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return nbformat.read(f, as_version=4)
-    
-
-def extract_from_pdf(uploaded_file):
-    
-    if uploaded_file is not None:
-        doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-
-    extracted_text = ""
-    for page_num, page in enumerate(doc):
-        text = page.get_text()
-        extracted_text += f"\n\n--- Page {page_num + 1} ---\n{text}"
-
-    return extracted_text
-
-    
-    '''
-    # doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-    doc = fitz.open(stream=uploaded_file.encode('utf-8'), filetype="pdf")
-
-    extracted_text = ""
-    for page_num, page in enumerate(doc):
-            text = page.get_text()
-            extracted_text += f"\n\n--- Page {page_num + 1} ---\n{text}"
-
-    return extracted_text
-    '''
-
-
-def create_chunks(pdf_text):
-    text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,     # tokens (approx. 750–1000 words)
-    chunk_overlap=200,   # overlap to preserve context
-    )
-    chunks = text_splitter.split_text(pdf_text)
-
-    return chunks
-
-
-def create_embeddings(embedding_model, chunks):
-    
-    embeddings = embedding_model.embed_documents(chunks)
-    return embeddings
-
-
-def store_in_chromaDB(chunks,embeddings, path , collection_name):
-    # Validate input
-    if not (isinstance(chunks, list) and isinstance(embeddings, list)):
-        raise TypeError("Both chunks and embeddings must be lists.")
-    if len(chunks) != len(embeddings):
-        raise ValueError(f"Length mismatch: {len(chunks)} chunks vs {len(embeddings)} embeddings.")
-    if not all(isinstance(e, list) for e in embeddings):
-        raise TypeError("Each embedding should be a list of floats (i.e., a vector).")
-
-    chroma_client = chromadb.PersistentClient(path= path)
-    collection = chroma_client.get_or_create_collection(name= collection_name)
-
-
-    # Add data to collection
-    collection.add(
-        documents=chunks,
-        embeddings=embeddings,
-        ids=[f"chunk-{i}" for i in range(len(chunks))]
-    )
-    return collection
-
-
 def summarize(whitepaper_text):
-    """Uses LLM to extract functionalities from whitepaper."""
     prompt = [
         SystemMessage(content="You are a product analyst."),
         HumanMessage(content=f"""
@@ -249,7 +170,7 @@ def summarize(whitepaper_text):
 
         {whitepaper_text}
          
-        Give brief objectivw of white paper at top. Summarize and condense the content from both the notebook and the white paper into a structured report. Remove any duplicate information and present the findings in a clear, organized format.
+        Give brief objective of white paper at top. Summarize and condense the content from both the notebook and the white paper into a structured report. Remove any duplicate information and present the findings in a clear, organized format.
 
             Report Structure:
             1. Model Overview
@@ -264,7 +185,7 @@ def summarize(whitepaper_text):
                 - Handling of imbalanced data (if discussed)
 
             2. Validation Metrics
-                - ompile validation metrics and scores from both the white paper and the notebook.
+                - Compile validation metrics and scores from both the white paper and the notebook.
                 - Highlight any discrepancies.
 
             3. Hyperparameter Configuration
@@ -275,119 +196,98 @@ def summarize(whitepaper_text):
                 - Clearly state whether the notebook and white paper are aligned.
                 - If not, include the note: "White paper is not aligned with the code. Please update the white paper accordingly."
         """)
-            ]
+    ]
     return llm(prompt).content.strip()
 
-
-def queryFun(query, embedding_model,collection):
-    query_embedding = embedding_model.embed_query(query)
-    l_docs = []
-    results = collection.query(query_embeddings=[query_embedding], n_results=5)
-    for doc in results["documents"][0]:
-        l_docs.append(doc)
-        # print("🔎 Match:", l_docs.append(doc))
-    return l_docs
-
 queries = [
-            "Summary/Objective of white paper ",
-            "Features mentioned",
-            "Preprocessing steps and data transformation steps",
-            "Model selected for classification",
-            "Training and resting methodology",
-            "List of Hyper parameters and respective values",
-            "What are list of validation scores and the performance scores?",
-            "Ethical considerations" ]
+    "Summary/Objective of white paper ",
+    "Features mentioned",
+    "Preprocessing steps and data transformation steps",
+    "Model selected for classification",
+    "Training and resting methodology",
+    "List of Hyper parameters and respective values",
+    "What are list of validation scores and the performance scores?",
+    "Ethical considerations"
+]
 
 def main():
     st.set_page_config(page_title="Functionality Coverage Checker", layout="wide")
-    
     st.title("🧠 AI Feature Mapping Validator")
     st.subheader("Compare functionalities between a Whitepaper and its Codebase")
 
     uploaded_whitepaper = st.file_uploader("📄 Upload Whitepaper File", type=["txt", "md", "pdf"])
     uploaded_code = st.file_uploader("💻 Upload Code File", type=["py", "txt", "ipynb"])
 
-    
     if uploaded_whitepaper and uploaded_code:
         if st.button("Click to Process Files"):
-            # Read whitepaper content
-            whitepaper = extract_from_pdf(uploaded_whitepaper)
-            chunks =create_chunks(whitepaper)
-            embeddings = create_embeddings(embedding_model = embedding_model,chunks=chunks)
-            collection = store_in_chromaDB(chunks=chunks, embeddings=embeddings, path= './chroma_openai1', collection_name= 'whitepaper_embeddings')
-            
-            list_pdf_docs = []
-            st.write('Getting relevant chunks from vector database for white paper')
-            for query in queries:
-                l_docs = queryFun(query=query,embedding_model=embedding_model,collection =collection)
-                list_pdf_docs.append(l_docs)
-                
-            list_refine_context_from_extracted_element_from_pdf =[]
-            st.write('Refining extracted chunks from vector database for white paper')            
-            for i in range(len(queries)):
-                refine_context_from_extracted_element_from_pdf = refine_extracted_elements_with_context(similar_elements = list_pdf_docs[i], query_context = queries[i]) 
-                list_refine_context_from_extracted_element_from_pdf.append(refine_context_from_extracted_element_from_pdf)
-        
 
-            # for ele in list_refine_context_from_extracted_element_from_pdf:
-            #     print("Context extracted from pdf")
-            #     st.write('Context extracted from pdf', ele)
-            #     (print(ele))
-            #     print("-------------------------------------")
-            
-            # Handle .ipynb or other code files
+            whitepaper_hash = get_file_hash(uploaded_whitepaper)
+            code_hash = get_file_hash(uploaded_code)
+
+            # --- Show spinner for feedback ---
+            with st.spinner("Extracting and embedding whitepaper..."):
+                whitepaper = extract_from_pdf(uploaded_whitepaper)
+                collection_wp, chunks_wp = get_or_create_embeddings(
+                    uploaded_file=uploaded_whitepaper,
+                    text=whitepaper,
+                    _embedding_model=embedding_model,
+                    collection_name=f"whitepaper_{whitepaper_hash}"
+                )
+
+            st.write('Getting relevant chunks from vector database for white paper')
+            with st.spinner("Running vector search for whitepaper..."):
+                # --- Parallel vector queries ---
+                list_pdf_docs = queryFun_parallel(queries, embedding_model, collection_wp)
+
+            st.write('Refining extracted chunks from vector database for white paper')
+            with st.spinner("Refining chunks..."):
+                with ThreadPoolExecutor() as executor:
+                    list_refine_context_from_extracted_element_from_pdf = list(
+                        executor.map(
+                            refine_extracted_elements_with_context,
+                            list_pdf_docs, queries
+                        )
+                    )
+
             if uploaded_code.name.endswith(".ipynb"):
-                # Write the raw content to a temp file
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".ipynb", mode='wb') as tmp_file:
                     tmp_file.write(uploaded_code.read())
                     temp_file_path = tmp_file.name
-
-                # notebook_contents = read_notebook(temp_file_path)
                 notebook_contents = read_notebook_with_outputs(temp_file_path)
-                
-                # Generating embeddings
-                chunks_notebook =create_chunks(notebook_contents)
-                embeddings_notebook = create_embeddings(embedding_model = embedding_model,chunks=chunks_notebook)
-                # store in vector database
-                collection_notebook = store_in_chromaDB(chunks = chunks_notebook,embeddings =embeddings_notebook , path =  "./chroma_openai1", collection_name = "notebook_embeddings")
-
-
-                list_notebook_queries_item = []
+                with st.spinner("Extracting and embedding notebook..."):
+                    collection_nb, chunks_nb = get_or_create_embeddings(
+                        uploaded_file=uploaded_code,
+                        text=notebook_contents,
+                        _embedding_model=embedding_model,
+                        collection_name=f"notebook_{code_hash}"
+                    )
                 st.write('Getting relevant chunks from vector database for model')
-                for query in queries:
-                    l_docs = queryFun(query=query,embedding_model=embedding_model,collection =collection_notebook)
-                    list_notebook_queries_item.append(l_docs)
-
-                list_refine_context_from_extracted_element_from_markdown =[]
+                with st.spinner("Running vector search for codebase..."):
+                    list_notebook_queries_item = queryFun_parallel(queries, embedding_model, collection_nb)
                 st.write('Refining extracted chunks from vector database for model')
-                for i in range(len(queries)):
-                    refine_context_from_extracted_element_from_notebook = refine_extracted_elements_with_context(similar_elements = list_notebook_queries_item[i], query_context = queries[i]) 
-                    list_refine_context_from_extracted_element_from_markdown.append(refine_context_from_extracted_element_from_notebook)
-                    
-                # for ele in list_refine_context_from_extracted_element_from_markdown:
-                #     print("Context extracted from markdown")
-                #     print(ele)
-                #     st.write('Context extracted from markdown', ele)
-                #     print("-----------------")
-                    
+                with ThreadPoolExecutor() as executor:
+                    list_refine_context_from_extracted_element_from_markdown = list(
+                        executor.map(
+                            refine_extracted_elements_with_context,
+                            list_notebook_queries_item, queries
+                        )
+                    )
             else:
                 code = uploaded_code.read().decode("utf-8")
                 code_funcs = extract_functionalities_from_code(code)
+                list_refine_context_from_extracted_element_from_markdown = [code_funcs] * len(queries)
 
-            list_missing_funcs = []
-            for i in range(len(list_refine_context_from_extracted_element_from_markdown)):
-                list_missing_funcs.append(compare_functionalities(list_refine_context_from_extracted_element_from_pdf[i], list_refine_context_from_extracted_element_from_markdown[i]))
-
-            # for ele in list_missing_funcs:
-            #     print("Missing functionality")
-            #     print(ele)
-            #     st.write('Missing functionality ', ele)
-            #     print("------------------------------------------------")
-                
-            list_missing_funcs = "\n\n".join(list_missing_funcs)
-            st.write('Summarizing report findings')
-            output = summarize(list_missing_funcs)
-
+            st.write('Comparing functionalities (this may take a moment)...')
+            def compare_all():
+                with ThreadPoolExecutor() as executor:
+                    return list(executor.map(
+                        compare_functionalities,
+                        list_refine_context_from_extracted_element_from_pdf,
+                        list_refine_context_from_extracted_element_from_markdown
+                    ))
+            list_missing_funcs = compare_all()
+            st.write('Summarizing report findings...')
+            output = summarize("\n\n".join(list_missing_funcs))
             st.write(output)
 
 if __name__ == "__main__":
