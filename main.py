@@ -36,17 +36,15 @@ def collection_exists(collection_name):
     except Exception:
         return False
 
-def store_in_chromaDB(chunks, embeddings, collection_name):
-    if collection_exists(collection_name):
-        return chroma_client.get_collection(collection_name)
-    collection = chroma_client.get_or_create_collection(name=collection_name)
-    collection.add(
-        documents=chunks,
-        embeddings=embeddings,
-        ids=[f"chunk-{i}" for i in range(len(chunks))]
-    )
-    return collection
 
+
+def extract_from_pdf(uploaded_file):
+    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+    extracted_text = ""
+    for page_num, page in enumerate(doc):
+        text = page.get_text()
+        extracted_text += f"\n\n--- Page {page_num + 1} ---\n{text}"
+    return extracted_text
 
 def create_chunks(text):
     text_splitter = RecursiveCharacterTextSplitter(
@@ -56,6 +54,7 @@ def create_chunks(text):
     return text_splitter.split_text(text)
 
 
+ 
 @st.cache_resource(show_spinner="Generating/retrieving embeddings...")
 def get_or_create_embeddings(uploaded_file, text, _embedding_model, collection_name):
     chunks = create_chunks(text)
@@ -69,13 +68,6 @@ def get_or_create_embeddings(uploaded_file, text, _embedding_model, collection_n
     return collection, chunks
 
 
-def extract_from_pdf(uploaded_file):
-    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-    extracted_text = ""
-    for page_num, page in enumerate(doc):
-        text = page.get_text()
-        extracted_text += f"\n\n--- Page {page_num + 1} ---\n{text}"
-    return extracted_text
 
 
 def read_notebook_with_outputs(file_path):
@@ -130,7 +122,7 @@ def refine_extracted_elements_with_context(similar_elements, query_context):
         - Avoid verbose explanations; focus on clarity and precision.
         - Extract details from given context keep length short in summary format 
         - Do not recommend, only extract
-        - Extract relevant scores, metrics and model name if available in context and 
+        - Extract metrics score/values, model name and and hyperpapramter values if available in context 
         - Provide concise, bullet-pointed outputs or insights based on retrieved data.
         - Format the response using IPython Markdown style for readability
 
@@ -166,27 +158,29 @@ def summarize(whitepaper_text):
     prompt = [
         SystemMessage(content="You are a product analyst."),
         HumanMessage(content=f"""
-        Here is the whitepaper or product requirement document:
+        Here is the whitepaper or product requirement document with code:
 
         {whitepaper_text}
          
-        Give brief objective of white paper at top. Summarize and condense the content from both the notebook and the white paper into a structured report. Remove any duplicate information and present the findings in a clear, organized format.
-
+        Give brief objective of white paper at top. Summarize and condense the content from both the updated version and the white paper into a structured report. Remove any duplicate information and present the findings in a clear, organized format.
+        Follow sequence: Model Overview, train_test_split, Preprocessing step, Feature selection and Handle Imbalance data, Model Architecture, Base Line Metrics and Fallback mechanism
             Report Structure:
             1. Model Overview
-                - Extract and compare model information from the notebook and white paper.
+                - Extract and compare model information from the notebook and white paper
                 - Highlight differences or similarities in:
-                - Feature selection and feature engineering
-                - Model architecture or type
-                - Data splitting strategy
-                - Baseline metrics
-                - Fallback mechanisms (if any)
-                - Data import and preprocessing steps
+                - Data splitting strategy train_test_split 
+                - Preprocessing steps
+                - Name of Features and select features, and display all features. Feature engineering steps
                 - Handling of imbalanced data (if discussed)
+                - Model architecture or Main model used for prediction
+                - Baseline metrics and respective scores 
+                - Fallback mechanisms (if any)
+                - High light any mismatches or changes for above pointers
+
 
             2. Validation Metrics
-                - Compile validation metrics and scores from both the white paper and the notebook.
-                - Highlight any discrepancies.
+                - Compile validation metrics and scores from both the white paper and the notebook/updated version.
+                - Note any mismatches or changes.
 
             3. Hyperparameter Configuration
                 - List hyperparameters used in the model(s) from both sources.
@@ -201,10 +195,10 @@ def summarize(whitepaper_text):
 
 queries = [
     "Summary/Objective of white paper ",
-    "Features mentioned",
+    "Select All seatures/ Features Name ",
+    "Training and resting methodology",
     "Preprocessing steps and data transformation steps",
     "Model selected for classification",
-    "Training and resting methodology",
     "List of Hyper parameters and respective values",
     "What are list of validation scores and the performance scores?",
     "Ethical considerations"
@@ -285,7 +279,10 @@ def main():
                         list_refine_context_from_extracted_element_from_pdf,
                         list_refine_context_from_extracted_element_from_markdown
                     ))
+            
             list_missing_funcs = compare_all()
+            st.write('Missing functionality', list_missing_funcs)
+            st.write("-------------------------------------------------------")
             st.write('Summarizing report findings...')
             output = summarize("\n\n".join(list_missing_funcs))
             st.write(output)
