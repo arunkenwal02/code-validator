@@ -14,7 +14,8 @@ import fitz
 import tempfile
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+notebook_file_path = "loan-approval-prediction_v2.ipynb"
+path="./chroma_openai1"
 load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
 llm = ChatOpenAI(model="gpt-4o", temperature=0, openai_api_key=openai_api_key)
@@ -28,6 +29,14 @@ def get_file_hash(uploaded_file):
     uploaded_file.seek(0)
     return hash_val
 
+
+def get_string_hash(text_data):
+    # Encode the string to bytes
+    text_bytes = text_data.encode('utf-8')
+    # Compute the SHA-256 hash
+    hash_val = hashlib.sha256(text_bytes).hexdigest()
+    return hash_val
+
 def collection_exists(collection_name):
     try:
         chroma_client.get_collection(collection_name)
@@ -35,8 +44,7 @@ def collection_exists(collection_name):
     except Exception:
         return False
 
-
-# Start Get pdf file from One Drive 
+# Start: Get white paper from one drive  
 import msal
 import requests
 import time
@@ -49,9 +57,9 @@ client_id = Permission_ID
 authority = "https://login.microsoftonline.com/consumers"
 scopes = ["Files.Read"]
 source_folder = "Documents/GitHub/code-validator/"    
-file_name = "Load Prediction Whitepaper.pdf"       # input 
+# file_name = "Load Prediction Whitepaper.pdf"       # input 
 version_id = int(7)                                # input 
-file_path = source_folder+file_name
+# file_path = source_folder+file_name
 
 def access_token_key(client_id, authority):
     scopes = ["Files.Read"]
@@ -69,7 +77,7 @@ def access_token_key(client_id, authority):
 
     return access_token
 
-
+# white paper raw data
 def get_raw_data(client_id, authority ,file_path ):
     access_token= access_token_key(client_id=client_id, authority=authority)
     url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/content"
@@ -97,7 +105,8 @@ def get_onedrive_whitepaper(file_bytes):
     print("First 1000 chars of PDF text:", text)
     
     return text
-   
+
+# White paper previous file
 def prev_version( client_id, authority, file_path, version_id):
     access_token= access_token_key(client_id=client_id, authority=authority)
 
@@ -135,13 +144,109 @@ def prev_version( client_id, authority, file_path, version_id):
     else:
         print("Failed to fetch versions:", response.status_code, response.text)
 
-# -----------
+# End: Get white paper from one drive  
 
+
+# Start: Get notebook file from Github
+
+import json 
+import pandas as pd 
+import requests
+import requests
+import base64
+
+push_event= pd.read_json('push_events.json', )
+latest_push_id = push_event[0].tolist()[0]
+latest_push_id
+owner = "arunkenwal02"
+repo = "code-validator"
+push_id = latest_push_id
+notebook_file_path = "loan-approval-prediction_v2.ipynb"
+
+
+def get_sha_pair_from_push_id(owner, repo, push_id):
+    """
+    Returns (before_sha, head_sha) for the given push_id.
+    If not found, returns (None, None).
+    """
+    url = f"https://api.github.com/repos/{owner}/{repo}/events"
+    resp = requests.get(url)
+    events = resp.json()
+    for event in events:
+        if event["type"] == "PushEvent" and event["id"] == str(push_id):
+            before_sha = event["payload"]["before"]
+            head_sha = event["payload"]["head"]
+            print(f"Push ID: {push_id}\nbefore: {before_sha}\nhead: {head_sha}")
+            return before_sha, head_sha
+    print(f"Push ID {push_id} not found in recent events.")
+    return None, None
+
+# Pull model from github
+def fetch_latest_file_for_sha(owner, repo, notebook_file_path, sha_pairs):
+    """
+    For each (sha_old, sha_new) in sha_pairs, check if file_path was updated.
+    If yes, download file from sha_new. Else, download most recently updated version.
+    """
+    for i, (sha_old, sha_new) in enumerate(sha_pairs):
+        print(f"\nProcessing pair {i+1}: {sha_old} → {sha_new}")
+
+        # 1. Compare the two SHAs
+        compare_url = f"https://api.github.com/repos/{owner}/{repo}/compare/{sha_old}...{sha_new}"
+        compare_resp = requests.get(compare_url)
+        compare_data = compare_resp.json()
+
+        file_changed = False
+        for f in compare_data.get("files", []):
+            if f["filename"] == notebook_file_path:
+                file_changed = True
+                print(f"File {notebook_file_path} was changed in this push.")
+                break
+
+        if file_changed:
+            # Download updated file from sha_new
+            content_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{notebook_file_path}"
+            params = {"ref": sha_new}
+            file_resp = requests.get(content_url, params=params)
+            file_data = file_resp.json()
+            
+        # Check for 'content' key (base64-encoded)
+            if "content" in file_data:
+                nb_json = base64.b64decode(file_data["content"]).decode("utf-8")
+                notebook_dict = json.loads(nb_json)
+                return notebook_dict
+            else:
+                raise Exception("Notebook not found or could not fetch content. Details: " + str(file_data))
+
+        else:
+            print(f"File {notebook_file_path} was NOT changed between {sha_old} and {sha_new}.")
+            # Get most recent commit where this file was updated
+            commits_url = f"https://api.github.com/repos/{owner}/{repo}/commits"
+            params = {"path": notebook_file_path, "per_page": 1}
+            commits_resp = requests.get(commits_url, params=params)
+            last_update_sha = commits_resp.json()[0]["sha"]
+            print("Most recent commit where file was changed:", last_update_sha)
+            # Download file at that SHA
+            content_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{notebook_file_path}"
+            params = {"ref": last_update_sha}
+            file_resp = requests.get(content_url, params=params)
+            file_data = file_resp.json()
+            
+            # Check for 'content' key (base64-encoded)
+            if "content" in file_data:
+                nb_json = base64.b64decode(file_data["content"]).decode("utf-8")
+                notebook_dict = json.loads(nb_json)
+                return notebook_dict
+            else:
+                raise Exception("Notebook not found or could not fetch content. Details: " + str(file_data))
+
+
+
+
+# End Get notebook from github
 
 
 def extract_from_pdf(client_id, authority, file_path, version_id):
     extracted_text = prev_version(client_id=client_id, authority=authority,  file_path= file_path, version_id = version_id)
-
 
     # doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
     # extracted_text = ""
@@ -159,6 +264,27 @@ def create_chunks(text):
     return text_splitter.split_text(text)
 
 
+def store_in_chromaDB(chunks,embeddings, path , collection_name):
+    # Validate input
+    if not (isinstance(chunks, list) and isinstance(embeddings, list)):
+        raise TypeError("Both chunks and embeddings must be lists.")
+    if len(chunks) != len(embeddings):
+        raise ValueError(f"Length mismatch: {len(chunks)} chunks vs {len(embeddings)} embeddings.")
+    if not all(isinstance(e, list) for e in embeddings):
+        raise TypeError("Each embedding should be a list of floats (i.e., a vector).")
+
+    chroma_client = chromadb.PersistentClient(path= path)
+    collection = chroma_client.get_or_create_collection(name= collection_name)
+
+
+    # Add data to collection
+    collection.add(
+        documents=chunks,
+        embeddings=embeddings,
+        ids=[f"chunk-{i}" for i in range(len(chunks))]
+    )
+    return collection
+
  
 @st.cache_resource(show_spinner="Generating/retrieving embeddings...")
 def get_or_create_embeddings(uploaded_file, text, _embedding_model, collection_name):
@@ -168,13 +294,58 @@ def get_or_create_embeddings(uploaded_file, text, _embedding_model, collection_n
         collection = chroma_client.get_collection(collection_name)
     else:
         embeddings = _embedding_model.embed_documents(chunks)
-        collection = store_in_chromaDB(chunks, embeddings, collection_name)
+        collection = store_in_chromaDB(chunks,embeddings,path, collection_name)
 
     return collection, chunks
 
 
 
-def read_notebook_with_outputs(file_path):
+def read_notebook_with_outputs(owner,repo ,push_id ,notebook_file_path):
+
+    '''
+    Get data from Github
+    1. Connect to push id and get all shas
+    2. check loan approival prediction models caanges in any of these sha ids if cahnges pick updated one in not get previous one 
+    
+    '''
+    sha_pairs = get_sha_pair_from_push_id(owner = owner, repo = repo, push_id = push_id)
+    sha_pairs1 = [sha_pairs]
+    notebook_contents = fetch_latest_file_for_sha(owner = owner, repo = repo, notebook_file_path = notebook_file_path, sha_pairs = sha_pairs1)
+
+    all_cells_text = ""
+
+    for i, cell in enumerate(notebook_contents['cells']):
+        if cell['cell_type'] == 'code' and cell.get('outputs'):
+            # Add cell number and code
+            all_cells_text += f"\nCell #{i+1}\n"
+            all_cells_text += "Code:\n"
+            all_cells_text += "".join(cell['source']).strip() + "\n"
+            all_cells_text += "Output(s):\n"
+            # Add outputs
+            for output in cell['outputs']:
+                output_text = ""
+                if output.get('output_type') == 'stream':
+                    text = output.get('text', '')
+                    if isinstance(text, list):
+                        text = "".join(text)
+                    output_text += text.strip()
+                elif output.get('output_type') in ['execute_result', 'display_data']:
+                    data = output.get('data', {})
+                    text = data.get('text/plain', '')
+                    if isinstance(text, list):
+                        text = "".join(text)
+                    output_text += text.strip()
+                # Skipping errors
+                if output_text:
+                    all_cells_text += output_text + "\n"
+            all_cells_text += "-" * 30 + "\n"
+
+    # Optional: remove leading/trailing whitespace
+    all_cells_text = all_cells_text.strip()
+
+    return all_cells_text
+
+    '''
     nb = nbformat.read(file_path, as_version=4)
     cells_content = []
     for cell in nb.cells:
@@ -196,6 +367,7 @@ def read_notebook_with_outputs(file_path):
                 code += f"\n\n### Output:\n```\n{full_output}\n```"
             cells_content.append(code)
     return "\n\n".join(cells_content)
+    '''
 
 def queryFun_parallel(queries, embedding_model, collection):
     with ThreadPoolExecutor() as executor:
@@ -314,26 +486,52 @@ def main():
     st.title("🧠 AI Feature Mapping Validator")
     st.subheader("Compare functionalities between a Whitepaper and its Codebase")
 
-    uploaded_whitepaper = st.file_uploader("📄 Upload Whitepaper File", type=["txt", "md", "pdf"]) # Not required  
-    uploaded_code = st.file_uploader("💻 Upload Code File", type=["py", "txt", "ipynb"])   # not required 
+    whitepaper_name = st.text_area("📄 White Paper File Name", height=30, key="whitepaper")
+    version_id = st.text_area("💻 Version of White Paper", height=30 , key="code")
 
-    if uploaded_whitepaper and uploaded_code:
-        if st.button("Click to Process Files"):
+    # st.write(whitepaper_text) 
+    # st.write(type(whitepaper_text))
+    # st.write(version)
+    # st.write(type(version))
+    # uploaded_whitepaper = st.file_uploader("📄 Upload Whitepaper File", type=["txt", "md", "pdf"]) # Not required  
+    # uploaded_code = st.file_uploader("💻 Upload Code File", type=["py", "txt", "ipynb"])   # not required 
 
-            whitepaper_hash = get_file_hash(uploaded_whitepaper)
-            code_hash = get_file_hash(uploaded_code)
+    if whitepaper_name and version_id:
+# -------------------White Paper Starts ------------------------------
+        if st.button("Click to Process Files"):            
+            if version_id.strip() == "":
+                st.warning("Please enter a version ID.")
+            else:
+                try:
+                    version_id = int(version_id)
+                    # st.write("Version ID:", version_id)
+                    # st.write("Type:", type(version_id))
+                except ValueError:
+                    st.error("Version ID must be an integer.")
 
-            # --- Show spinner for feedback ---
+            file_path = source_folder+whitepaper_name
+            st.write(file_path)
+            st.write("Version ID:", version_id)
+            
+            whitepaper = extract_from_pdf(client_id, authority, file_path, version_id)
+            # st.write(type(whitepaper))
+            # st.write(whitepaper)
+            whitepaper_hash = get_string_hash(whitepaper)
+            # update hash for code for version id 
+            # notebook_contents = read_notebook_with_outputs(owner,repo ,push_id ,file_path)
+            # code_hash = get_string_hash(notebook_contents)
+            
+            # #-- Show spinner for feedback ---
             with st.spinner("Extracting and embedding whitepaper..."):
-                whitepaper = extract_from_pdf(uploaded_whitepaper)
+                # whitepaper = extract_from_pdf(uploaded_whitepaper)
                 collection_wp, chunks_wp = get_or_create_embeddings(
-                    uploaded_file=uploaded_whitepaper,
+                    uploaded_file=whitepaper_name,
                     text=whitepaper,
                     _embedding_model=embedding_model,
                     collection_name=f"whitepaper_{whitepaper_hash}"
                 )
 
-            st.write('Getting relevant chunks from vector database for white paper')
+            # st.write('Getting relevant chunks from vector database for white paper')
             with st.spinner("Running vector search for whitepaper..."):
                 # --- Parallel vector queries ---
                 list_pdf_docs = queryFun_parallel(queries, embedding_model, collection_wp)
@@ -347,50 +545,95 @@ def main():
                             list_pdf_docs, queries
                         )
                     )
+# -------------------White Paper Ends ------------------------------
 
-            if uploaded_code.name.endswith(".ipynb"):
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".ipynb", mode='wb') as tmp_file:
-                    tmp_file.write(uploaded_code.read())
-                    temp_file_path = tmp_file.name
-                notebook_contents = read_notebook_with_outputs(temp_file_path)
-                with st.spinner("Extracting and embedding notebook..."):
-                    collection_nb, chunks_nb = get_or_create_embeddings(
-                        uploaded_file=uploaded_code,
-                        text=notebook_contents,
-                        _embedding_model=embedding_model,
-                        collection_name=f"notebook_{code_hash}"
-                    )
-                st.write('Getting relevant chunks from vector database for model')
-                with st.spinner("Running vector search for codebase..."):
-                    list_notebook_queries_item = queryFun_parallel(queries, embedding_model, collection_nb)
-                st.write('Refining extracted chunks from vector database for model')
-                with ThreadPoolExecutor() as executor:
-                    list_refine_context_from_extracted_element_from_markdown = list(
-                        executor.map(
-                            refine_extracted_elements_with_context,
-                            list_notebook_queries_item, queries
-                        )
-                    )
-            else:
-                code = uploaded_code.read().decode("utf-8")
-                code_funcs = extract_functionalities_from_code(code)
-                list_refine_context_from_extracted_element_from_markdown = [code_funcs] * len(queries)
 
-            st.write('Comparing functionalities (this may take a moment)...')
-            def compare_all():
-                with ThreadPoolExecutor() as executor:
-                    return list(executor.map(
-                        compare_functionalities,
-                        list_refine_context_from_extracted_element_from_pdf,
-                        list_refine_context_from_extracted_element_from_markdown
-                    ))
-            
-            list_missing_funcs = compare_all()
-            st.write('Missing functionality', list_missing_funcs)
-            st.write("-------------------------------------------------------")
-            st.write('Summarizing report findings...')
-            output = summarize("\n\n".join(list_missing_funcs))
-            st.write(output)                                           # output
+# ------------------Notebook Starts ------------------------------
+
+
+            # if uploaded_code.name.endswith(".ipynb"):
+            #     with tempfile.NamedTemporaryFile(delete=False, suffix=".ipynb", mode='wb') as tmp_file:
+            #         tmp_file.write(uploaded_code.read())
+            #         temp_file_path = tmp_file.name
+            #     notebook_contents = read_notebook_with_outputs(temp_file_path)
+
+                
+            # with st.spinner("Extracting and embedding notebook..."):
+            #     collection_nb, chunks_nb = get_or_create_embeddings(
+            #         uploaded_file=notebook_file_path,
+            #         text=notebook_contents,
+            #         _embedding_model=embedding_model,
+            #         collection_name=f"notebook_{code_hash}"
+            #     )
+
+            # st.write('Getting relevant chunks from vector database for model')
+            # with st.spinner("Running vector search for codebase..."):
+            #     list_notebook_queries_item = queryFun_parallel(queries, embedding_model, collection_nb)
+            # st.write('Refining extracted chunks from vector database for model')
+            # with ThreadPoolExecutor() as executor:
+            #     list_refine_context_from_extracted_element_from_markdown = list(
+            #         executor.map(
+            #             refine_extracted_elements_with_context,
+            #             list_notebook_queries_item, queries
+            #         )
+            #     )
+           
+            # st.write('Comparing functionalities (this may take a moment)...')
+            # def compare_all():
+            #     with ThreadPoolExecutor() as executor:
+            #         return list(executor.map(
+            #             compare_functionalities,
+            #             list_refine_context_from_extracted_element_from_pdf,
+            #             list_refine_context_from_extracted_element_from_markdown
+            #         ))
+                
+
+# ------------------Notebook End ------------------------------
+            # list_missing_funcs = compare_all()
+            # st.write('Missing functionality', list_missing_funcs)
+            # st.write("-------------------------------------------------------")
+            # st.write('Summarizing report findings...')
+            # output = summarize("\n\n".join(list_missing_funcs))
+            # st.write(output) 
+            # 
+            output  = """
+                You are a Functionality Coverage Checker.
+                Given the provided code, documentation, or other technical content, generate a detailed **Report** in the following Markdown structure:
+
+                # Report
+
+                ## 1. Model Overview  
+                - Summarize the model(s) described, including type, architecture, and key characteristics.
+
+                ## 2. Feature Engineering  
+                - List and describe the features used or created.
+                - Note any feature selection or engineering steps performed.
+
+                ## 3. Data Processing  
+                - Explain preprocessing steps (e.g., cleaning, transformation).
+                - Note data splitting strategy, if mentioned.
+
+                ## 4. Model Training  
+                - Describe training methodology, algorithms used, and any relevant settings.
+
+                ## 5. Validation and Evaluation  
+                - Summarize validation metrics, evaluation procedures, and results.
+                - Highlight any discrepancies or important findings.
+
+                ## 6. Hyperparameters  
+                - List all hyperparameters and their values.
+
+                ## 7. Summary/Conclusion  
+                - Conclude on overall alignment with requirements or documentation.
+
+                **Instructions:**  
+                - Ensure each section is in Markdown.
+                - Be concise, objective, and highlight any key findings, differences, or missing elements.
+                """
+            st.write(output)                
+            return output
+                                              # output
+
 
 if __name__ == "__main__":
     main()
