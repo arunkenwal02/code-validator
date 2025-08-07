@@ -15,7 +15,6 @@ import tempfile
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-
 load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
 llm = ChatOpenAI(model="gpt-4o", temperature=0, openai_api_key=openai_api_key)
@@ -37,14 +36,120 @@ def collection_exists(collection_name):
         return False
 
 
+# Start Get pdf file from One Drive 
+import msal
+import requests
+import time
+import fitz
+import os 
 
-def extract_from_pdf(uploaded_file):
-    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-    extracted_text = ""
+load_dotenv() 
+Permission_ID ="6a94cb3a-9869-4b54-ae0b-f4f523df2614"  # Mote into env variable
+client_id = Permission_ID
+authority = "https://login.microsoftonline.com/consumers"
+scopes = ["Files.Read"]
+source_folder = "Documents/GitHub/code-validator/"    
+file_name = "Load Prediction Whitepaper.pdf"       # input 
+version_id = int(7)                                # input 
+file_path = source_folder+file_name
+
+def access_token_key(client_id, authority):
+    scopes = ["Files.Read"]
+    app = msal.PublicClientApplication(client_id=client_id, authority=authority)
+    result = None
+
+    accounts = app.get_accounts()
+    if accounts:
+        result = app.acquire_token_silent(scopes, account=accounts[0])
+    if not result:
+        result = app.acquire_token_interactive(scopes=scopes)
+    if not result or "access_token" not in result:
+        print("MSAL Error:", result)
+    access_token = result["access_token"]
+
+    return access_token
+
+
+def get_raw_data(client_id, authority ,file_path ):
+    access_token= access_token_key(client_id=client_id, authority=authority)
+    url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/content"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    time.sleep(2)
+    response = requests.get(url, headers=headers)
+    print(f"Response code: {response.status_code}")
+    if response.status_code == 200:
+        file_bytes = response.content
+        print("File read into memory!")
+        return file_bytes
+    else:
+        print("Failed:", response.status_code, response.text)
+        return None
+
+
+def get_onedrive_whitepaper(file_bytes):
+    
+    # file_bytes is from above
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    text = ""
     for page_num, page in enumerate(doc):
-        text = page.get_text()
-        extracted_text += f"\n\n--- Page {page_num + 1} ---\n{text}"
+        text += f"\n\n--- Page {page_num + 1} ---\n{page.get_text()}"
+
+    print("First 1000 chars of PDF text:", text)
+    
+    return text
+   
+def prev_version( client_id, authority, file_path, version_id):
+    access_token= access_token_key(client_id=client_id, authority=authority)
+
+    versions_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/versions"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get(versions_url, headers=headers)
+
+    if response.status_code == 200:
+        versions = response.json()["value"]
+        if len(versions) >= int(version_id):
+            # 3. Get the 2nd version (index 1)
+            version_id = versions[1]['id']
+            print(f"2nd Version ID: {version_id}, Last Modified: {versions[1]['lastModifiedDateTime']}")
+            
+            # 4. Fetch 2nd version's PDF bytes
+            download_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/versions/{version_id}/content"
+            version_response = requests.get(download_url, headers=headers)
+            if version_response.status_code == 200:
+                pdf_bytes = version_response.content  # This is your PDF in memory
+                
+                # 5. Extract text from the PDF (in memory, no save)
+                doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                all_text = ""
+                for page_num, page in enumerate(doc):
+                    all_text += f"\n--- Page {page_num+1} ---\n{page.get_text()}"
+                
+                print("Extracted PDF text (first 1000 chars):")
+                print(all_text[:1000])
+                return all_text
+                # You can use `all_text` as needed (search, LLM input, etc)
+            else:
+                print("Failed to download 2nd version:", version_response.status_code, version_response.text)
+        else:
+            print("Less than 2 versions available!")
+    else:
+        print("Failed to fetch versions:", response.status_code, response.text)
+
+# -----------
+
+
+
+def extract_from_pdf(client_id, authority, file_path, version_id):
+    extracted_text = prev_version(client_id=client_id, authority=authority,  file_path= file_path, version_id = version_id)
+
+
+    # doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+    # extracted_text = ""
+    # for page_num, page in enumerate(doc):
+    #     text = page.get_text()
+    #     extracted_text += f"\n\n--- Page {page_num + 1} ---\n{text}"
     return extracted_text
+
 
 def create_chunks(text):
     text_splitter = RecursiveCharacterTextSplitter(
@@ -66,7 +171,6 @@ def get_or_create_embeddings(uploaded_file, text, _embedding_model, collection_n
         collection = store_in_chromaDB(chunks, embeddings, collection_name)
 
     return collection, chunks
-
 
 
 
@@ -204,13 +308,14 @@ queries = [
     "Ethical considerations"
 ]
 
+
 def main():
     st.set_page_config(page_title="Functionality Coverage Checker", layout="wide")
     st.title("🧠 AI Feature Mapping Validator")
     st.subheader("Compare functionalities between a Whitepaper and its Codebase")
 
-    uploaded_whitepaper = st.file_uploader("📄 Upload Whitepaper File", type=["txt", "md", "pdf"])
-    uploaded_code = st.file_uploader("💻 Upload Code File", type=["py", "txt", "ipynb"])
+    uploaded_whitepaper = st.file_uploader("📄 Upload Whitepaper File", type=["txt", "md", "pdf"]) # Not required  
+    uploaded_code = st.file_uploader("💻 Upload Code File", type=["py", "txt", "ipynb"])   # not required 
 
     if uploaded_whitepaper and uploaded_code:
         if st.button("Click to Process Files"):
@@ -285,7 +390,7 @@ def main():
             st.write("-------------------------------------------------------")
             st.write('Summarizing report findings...')
             output = summarize("\n\n".join(list_missing_funcs))
-            st.write(output)
+            st.write(output)                                           # output
 
 if __name__ == "__main__":
     main()
