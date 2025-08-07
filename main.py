@@ -23,6 +23,8 @@ embedding_model = OpenAIEmbeddings(model="text-embedding-3-small")
 
 chroma_client = chromadb.PersistentClient(path="./chroma_openai1")
 
+
+# ------------- Start Store in Vevtore Database and Hashing optimize --------------------------
 def get_file_hash(uploaded_file):
     uploaded_file.seek(0)
     hash_val = hashlib.sha256(uploaded_file.read()).hexdigest()
@@ -44,7 +46,45 @@ def collection_exists(collection_name):
     except Exception:
         return False
 
-# Start: Get white paper from one drive  
+def store_in_chromaDB(chunks,embeddings, path , collection_name):
+    # Validate input
+    if not (isinstance(chunks, list) and isinstance(embeddings, list)):
+        raise TypeError("Both chunks and embeddings must be lists.")
+    if len(chunks) != len(embeddings):
+        raise ValueError(f"Length mismatch: {len(chunks)} chunks vs {len(embeddings)} embeddings.")
+    if not all(isinstance(e, list) for e in embeddings):
+        raise TypeError("Each embedding should be a list of floats (i.e., a vector).")
+
+    chroma_client = chromadb.PersistentClient(path= path)
+    collection = chroma_client.get_or_create_collection(name= collection_name)
+
+
+    # Add data to collection
+    collection.add(
+        documents=chunks,
+        embeddings=embeddings,
+        ids=[f"chunk-{i}" for i in range(len(chunks))]
+    )
+    return collection
+
+ 
+@st.cache_resource(show_spinner="Generating/retrieving embeddings...")
+def get_or_create_embeddings(uploaded_file, text, _embedding_model, collection_name):
+    chunks = create_chunks(text)
+
+    if collection_exists(collection_name):
+        collection = chroma_client.get_collection(collection_name)
+    else:
+        embeddings = _embedding_model.embed_documents(chunks)
+        collection = store_in_chromaDB(chunks,embeddings,path, collection_name)
+
+    return collection, chunks
+
+
+# --------------------Store in Vevtore Database and Hashing optimize ----------------------------
+
+
+#------------------------------- Start: Get white paper from one drive  -------------------------------
 import msal
 import requests
 import time
@@ -144,10 +184,10 @@ def prev_version( client_id, authority, file_path, version_id):
     else:
         print("Failed to fetch versions:", response.status_code, response.text)
 
-# End: Get white paper from one drive  
+#---------------------------------------------- End: Get white paper from one drive  -----------------------------------
 
 
-# Start: Get notebook file from Github
+# ---------------------------------------------Start: Get notebook file from Github ------------------------
 
 import json 
 import pandas as pd 
@@ -241,8 +281,7 @@ def fetch_latest_file_for_sha(owner, repo, notebook_file_path, sha_pairs):
 
 
 
-
-# End Get notebook from github
+# ---------------------------------------------------- End Get notebook from github ---------------
 
 
 def extract_from_pdf(client_id, authority, file_path, version_id):
@@ -264,49 +303,12 @@ def create_chunks(text):
     return text_splitter.split_text(text)
 
 
-def store_in_chromaDB(chunks,embeddings, path , collection_name):
-    # Validate input
-    if not (isinstance(chunks, list) and isinstance(embeddings, list)):
-        raise TypeError("Both chunks and embeddings must be lists.")
-    if len(chunks) != len(embeddings):
-        raise ValueError(f"Length mismatch: {len(chunks)} chunks vs {len(embeddings)} embeddings.")
-    if not all(isinstance(e, list) for e in embeddings):
-        raise TypeError("Each embedding should be a list of floats (i.e., a vector).")
-
-    chroma_client = chromadb.PersistentClient(path= path)
-    collection = chroma_client.get_or_create_collection(name= collection_name)
-
-
-    # Add data to collection
-    collection.add(
-        documents=chunks,
-        embeddings=embeddings,
-        ids=[f"chunk-{i}" for i in range(len(chunks))]
-    )
-    return collection
-
- 
-@st.cache_resource(show_spinner="Generating/retrieving embeddings...")
-def get_or_create_embeddings(uploaded_file, text, _embedding_model, collection_name):
-    chunks = create_chunks(text)
-
-    if collection_exists(collection_name):
-        collection = chroma_client.get_collection(collection_name)
-    else:
-        embeddings = _embedding_model.embed_documents(chunks)
-        collection = store_in_chromaDB(chunks,embeddings,path, collection_name)
-
-    return collection, chunks
-
-
-
 def read_notebook_with_outputs(owner,repo ,push_id ,notebook_file_path):
 
     '''
     Get data from Github
     1. Connect to push id and get all shas
     2. check loan approival prediction models caanges in any of these sha ids if cahnges pick updated one in not get previous one 
-    
     '''
     sha_pairs = get_sha_pair_from_push_id(owner = owner, repo = repo, push_id = push_id)
     sha_pairs1 = [sha_pairs]
@@ -497,6 +499,7 @@ def main():
     # uploaded_code = st.file_uploader("💻 Upload Code File", type=["py", "txt", "ipynb"])   # not required 
 
     if whitepaper_name and version_id:
+
 # -------------------White Paper Starts ------------------------------
         if st.button("Click to Process Files"):            
             if version_id.strip() == "":
@@ -510,16 +513,13 @@ def main():
                     st.error("Version ID must be an integer.")
 
             file_path = source_folder+whitepaper_name
-            st.write(file_path)
-            st.write("Version ID:", version_id)
+            # st.write(file_path)
+            # st.write("Version ID:", version_id)
             
             whitepaper = extract_from_pdf(client_id, authority, file_path, version_id)
             # st.write(type(whitepaper))
             # st.write(whitepaper)
             whitepaper_hash = get_string_hash(whitepaper)
-            # update hash for code for version id 
-            # notebook_contents = read_notebook_with_outputs(owner,repo ,push_id ,file_path)
-            # code_hash = get_string_hash(notebook_contents)
             
             # #-- Show spinner for feedback ---
             with st.spinner("Extracting and embedding whitepaper..."):
@@ -551,89 +551,57 @@ def main():
 # ------------------Notebook Starts ------------------------------
 
 
-            # if uploaded_code.name.endswith(".ipynb"):
-            #     with tempfile.NamedTemporaryFile(delete=False, suffix=".ipynb", mode='wb') as tmp_file:
-            #         tmp_file.write(uploaded_code.read())
-            #         temp_file_path = tmp_file.name
-            #     notebook_contents = read_notebook_with_outputs(temp_file_path)
 
+           # update hash for code for version id 
+            notebook_contents = read_notebook_with_outputs(owner,repo ,push_id ,notebook_file_path)
+            code_hash = get_string_hash(notebook_contents)
                 
-            # with st.spinner("Extracting and embedding notebook..."):
-            #     collection_nb, chunks_nb = get_or_create_embeddings(
-            #         uploaded_file=notebook_file_path,
-            #         text=notebook_contents,
-            #         _embedding_model=embedding_model,
-            #         collection_name=f"notebook_{code_hash}"
-            #     )
+            with st.spinner("Extracting and embedding notebook..."):
+                collection_nb, chunks_nb = get_or_create_embeddings(
+                    uploaded_file=notebook_file_path,
+                    text=notebook_contents,
+                    _embedding_model=embedding_model,
+                    collection_name=f"notebook_{code_hash}"
+                )
 
-            # st.write('Getting relevant chunks from vector database for model')
-            # with st.spinner("Running vector search for codebase..."):
-            #     list_notebook_queries_item = queryFun_parallel(queries, embedding_model, collection_nb)
-            # st.write('Refining extracted chunks from vector database for model')
-            # with ThreadPoolExecutor() as executor:
-            #     list_refine_context_from_extracted_element_from_markdown = list(
-            #         executor.map(
-            #             refine_extracted_elements_with_context,
-            #             list_notebook_queries_item, queries
-            #         )
-            #     )
+            st.write('Getting relevant chunks from vector database for model')
+            with st.spinner("Running vector search for codebase..."):
+                list_notebook_queries_item = queryFun_parallel(queries, embedding_model, collection_nb)
+            st.write('Refining extracted chunks from vector database for model')
+            with ThreadPoolExecutor() as executor:
+                list_refine_context_from_extracted_element_from_markdown = list(
+                    executor.map(
+                        refine_extracted_elements_with_context,
+                        list_notebook_queries_item, queries
+                    )
+                )
            
-            # st.write('Comparing functionalities (this may take a moment)...')
-            # def compare_all():
-            #     with ThreadPoolExecutor() as executor:
-            #         return list(executor.map(
-            #             compare_functionalities,
-            #             list_refine_context_from_extracted_element_from_pdf,
-            #             list_refine_context_from_extracted_element_from_markdown
-            #         ))
+            st.write('Comparing functionalities (this may take a moment)...')
+            def compare_all():
+                with ThreadPoolExecutor() as executor:
+                    return list(executor.map(
+                        compare_functionalities,
+                        list_refine_context_from_extracted_element_from_pdf,
+                        list_refine_context_from_extracted_element_from_markdown
+                    ))
                 
 
-# ------------------Notebook End ------------------------------
-            # list_missing_funcs = compare_all()
+# ------------------ Notebook End ------------------------------
+
+
+# ----------------Start: Compare functionality ----------------------
+            list_missing_funcs = compare_all()
             # st.write('Missing functionality', list_missing_funcs)
             # st.write("-------------------------------------------------------")
             # st.write('Summarizing report findings...')
-            # output = summarize("\n\n".join(list_missing_funcs))
-            # st.write(output) 
-            # 
-            output  = """
-                You are a Functionality Coverage Checker.
-                Given the provided code, documentation, or other technical content, generate a detailed **Report** in the following Markdown structure:
+            output = summarize("\n\n".join(list_missing_funcs))
+            st.write(output)     
 
-                # Report
+# -------------------- End Compare functionality ---------------------      
+# 
+#       
+            return output       # Main Output
 
-                ## 1. Model Overview  
-                - Summarize the model(s) described, including type, architecture, and key characteristics.
-
-                ## 2. Feature Engineering  
-                - List and describe the features used or created.
-                - Note any feature selection or engineering steps performed.
-
-                ## 3. Data Processing  
-                - Explain preprocessing steps (e.g., cleaning, transformation).
-                - Note data splitting strategy, if mentioned.
-
-                ## 4. Model Training  
-                - Describe training methodology, algorithms used, and any relevant settings.
-
-                ## 5. Validation and Evaluation  
-                - Summarize validation metrics, evaluation procedures, and results.
-                - Highlight any discrepancies or important findings.
-
-                ## 6. Hyperparameters  
-                - List all hyperparameters and their values.
-
-                ## 7. Summary/Conclusion  
-                - Conclude on overall alignment with requirements or documentation.
-
-                **Instructions:**  
-                - Ensure each section is in Markdown.
-                - Be concise, objective, and highlight any key findings, differences, or missing elements.
-                """
-            st.write(output)                
-            return output
-                                              # output
-
-
+                                              
 if __name__ == "__main__":
     main()
