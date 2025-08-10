@@ -148,43 +148,62 @@ def get_onedrive_whitepaper(file_bytes):
     return text
 
 # White paper previous file
-def prev_version( client_id, authority, file_path, version_id):
-    access_token= access_token_key(client_id=client_id, authority=authority)
-
-    versions_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/versions"
+def prev_version(client_id, authority, file_path, version_number):
+    """
+    Fetch and parse the N-th version of a OneDrive file via Microsoft Graph.
+    version_number is 1-based: 1 = latest, 2 = previous, etc.
+    Returns the extracted PDF text.
+    """
+    access_token = access_token_key(client_id=client_id, authority=authority)
     headers = {"Authorization": f"Bearer {access_token}"}
+
+    # 1) List versions
+    versions_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/versions"
     response = requests.get(versions_url, headers=headers)
+    if response.status_code != 200:
+        raise RuntimeError(f"Failed to fetch versions: {response.status_code} {response.text}")
 
-    if response.status_code == 200:
-        versions = response.json()["value"]
-        if len(versions) >= int(version_id):
-            # 3. Get the 2nd version (index 1)
-            version_id = versions[1]['id']
-            print(f"2nd Version ID: {version_id}, Last Modified: {versions[1]['lastModifiedDateTime']}")
-            
-            # 4. Fetch 2nd version's PDF bytes
-            download_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/versions/{version_id}/content"
-            version_response = requests.get(download_url, headers=headers)
-            if version_response.status_code == 200:
-                pdf_bytes = version_response.content  # This is your PDF in memory
-                
-                # 5. Extract text from the PDF (in memory, no save)
-                doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-                all_text = ""
-                for page_num, page in enumerate(doc):
-                    all_text += f"\n--- Page {page_num+1} ---\n{page.get_text()}"
-                
-                print("Extracted PDF text (first 1000 chars):")
-                print(all_text[:1000])
-                return all_text
-                # You can use `all_text` as needed (search, LLM input, etc)
-            else:
-                print("Failed to download 2nd version:", version_response.status_code, version_response.text)
-        else:
-            print("Less than 2 versions available!")
-    else:
-        print("Failed to fetch versions:", response.status_code, response.text)
+    versions = response.json().get("value", [])
+    if not versions:
+        raise RuntimeError("No versions found for this file.")
 
+    # Sort DESC by lastModifiedDateTime so index 0 is latest, 1 is previous, etc.
+    def _parse_dt(v):
+        ts = v.get("lastModifiedDateTime")
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")) if ts else datetime.min
+    versions.sort(key=_parse_dt, reverse=True)
+
+    # 2) Show total + quick overview
+    total = len(versions)
+    print(f"Total versions available: {total}")
+    for i, v in enumerate(versions, start=1):
+        print(f"{i}. id={v.get('id')} | lastModified={v.get('lastModifiedDateTime')} | size={v.get('size', 'NA')}")
+
+    # 3) Validate requested version and pick it
+    if not (1 <= int(version_number) <= total):
+        raise ValueError(f"Invalid version_number {version_number}. Only {total} versions exist.")
+
+    selected = versions[int(version_number) - 1]   # 1-based → 0-based
+    internal_id = selected["id"]
+    print(f"\nSelected version #{version_number}: id={internal_id}, lastModified={selected.get('lastModifiedDateTime')}")
+
+    # 4) Download that specific version’s content
+    download_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/versions/{internal_id}/content"
+    version_response = requests.get(download_url, headers=headers)
+    if version_response.status_code != 200:
+        raise RuntimeError(f"Failed to download version #{version_number}: {version_response.status_code} {version_response.text}")
+
+    pdf_bytes = version_response.content
+
+    # 5) Extract text from the PDF (in memory, no save)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    all_text = ""
+    for page_num, page in enumerate(doc):
+        all_text += f"\n--- Page {page_num+1} ---\n{page.get_text()}"
+
+    print("\nExtracted PDF text (first 1000 chars):")
+    # print(all_text[:1000])
+    return all_text
 #---------------------------------------------- End: Get white paper from one drive  -----------------------------------
 
 
@@ -521,7 +540,7 @@ def main():
     st.subheader("Compare functionalities between a Whitepaper and its Codebase")
 
     whitepaper_name = st.text_area("📄 White Paper File Name", height=30, key="whitepaper")
-    version_id = st.text_area("💻 Version of White Paper", height=30 , key="code")
+    version_number = st.text_area("💻 Version of White Paper", height=30 , key="code")
 
     # st.write(whitepaper_text) 
     # st.write(type(whitepaper_text))
@@ -530,7 +549,7 @@ def main():
     # uploaded_whitepaper = st.file_uploader("📄 Upload Whitepaper File", type=["txt", "md", "pdf"]) # Not required  
     # uploaded_code = st.file_uploader("💻 Upload Code File", type=["py", "txt", "ipynb"])   # not required 
 
-    if whitepaper_name and version_id:
+    if whitepaper_name and version_number:
 
 # -------------------White Paper Starts ------------------------------
         if st.button("Click to Process Files"):            
@@ -538,7 +557,7 @@ def main():
                 st.warning("Please enter a version ID.")
             else:
                 try:
-                    version_id = int(version_id)
+                    version_number = int(version_number)
                     # st.write("Version ID:", version_id)
                     # st.write("Type:", type(version_id))
                 except ValueError:
@@ -548,7 +567,7 @@ def main():
             # st.write(file_path)
             # st.write("Version ID:", version_id)
             
-            whitepaper = extract_from_pdf(client_id, authority, file_path, version_id)
+            whitepaper = extract_from_pdf(client_id, authority, file_path, version_number)
             # st.write(type(whitepaper))
             # st.write(whitepaper)
             whitepaper_hash = get_string_hash(whitepaper)
