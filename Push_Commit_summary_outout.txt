@@ -1,0 +1,33 @@
+This is Push code summary differenc 
+ The code changes include a comprehensive update to the `requirements.txt` file, with numerous new dependencies added such as `GitPython`, `Jinja2`, `PyMuPDF`, `SQLAlchemy`, `aiofiles`, `fastapi`, and many more, while several others like `appnope`, `argon2-cffi`, `bleach`, `debugpy`, and various `jupyter` packages have been removed. This indicates a significant shift in the project's dependency requirements, likely to support new features or architectural changes.
+
+In `main.py`, several imports have been added or reordered, including `os`, `nbformat`, `OpenAI`, and others. The initialization of a `chromadb.Client` and `OpenAIEmbeddings` is introduced, suggesting integration with a vector database and embedding models. Functions for processing PDF text and creating embeddings (`extract_from_pdf`, `create_chunks`, `create_embeddings`, `store_in_chromaDB`) have been added, indicating a new workflow for handling and analyzing document contents.
+
+A new function, `refine_extracted_elements_with_context`, is added to refine extracted elements from a vector database based on query context, improving data processing capabilities. The main function has been significantly expanded to include steps for extracting and processing text from a PDF, creating embeddings, and querying a vector database. This indicates a new pipeline for analyzing and comparing functionalities between documents and code.
+
+The `main.py` and `main.ipynb` files also include several changes related to the processing and comparison of functionalities between whitepapers and code, with an emphasis on extracting and refining data using embeddings and vector databases.
+
+The `main.ipynb` file was added, containing notebook-specific code for functionality extraction and comparison, mirroring some of the changes in `main.py`.
+
+Lastly, the `white paper.txt` file has been completely removed, indicating that its content is either outdated or incorporated into another format or system.
+
+ Thsis is Commit summary b/w these pushes 
+ 1. **Commit SHA:** c536e703bf0e78761d6374044ef7d9c2bb482131  
+   **File Changed:** requirements.txt  
+   **Commit Message:** -  
+   **Commit Message Summary:** Updated the requirements.txt file.
+
+2. **Commit SHA:** 5ef4b5b48eca8cad8d86e8d88904fcb2384e8dbb  
+   **File Changed:** No diff available  
+   **Commit Message:** -  
+   **Commit Message Summary:** No changes were made to the files.
+
+3. **Commit SHA:** 8ad9ffaa235a48de153eab057f7b819b7c1bd7a9  
+   **File Changed:** whitepaper.txt  
+   **Commit Message:** -  
+   **Commit Message Summary:** Updated the whitepaper.txt file.
+
+4. **Commit SHA:** 9e8f1e36c0bdcc45ec0cb24122bfab05514e926b  
+   **File Changed:** main.py  
+   **Commit Message:** -  
+   **Commit Message Summary:** Updated the main.py file.

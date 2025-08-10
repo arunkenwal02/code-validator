@@ -1,0 +1,65 @@
+```html
+<div>
+    <h2>White paper<br></h2>
+    <p style="font-weight: bold;">Objective:</p>
+    <p>The white paper aims to outline a machine learning-based loan approval prediction system, focusing on improving decision quality, reducing operational costs, and integrating alternative data sources for enhanced predictive power.</p>
+    
+    <h3>1. Model Overview<br></h3>
+    <ul style="list-style-type: none; padding: 0;">
+        <li><strong>Data Splitting Strategy:</strong> 
+            <ul>
+                <li>White Paper: Training (70%), Validation (15%), Testing (15%)</li>
+                <li>Code: Training (70%), Validation (30%)</li>
+                <li style="color: red;">Mismatch: Testing set not mentioned in the code.</li>
+            </ul>
+        </li>
+        <li><strong>Preprocessing Steps:</strong> 
+            <ul>
+                <li>White Paper: Imputation using mode, normalization, one-hot encoding</li>
+                <li>Code: One-hot encoding, column type changes</li>
+                <li style="color: red;">Mismatch: Imputation and normalization not mentioned in the code.</li>
+            </ul>
+        </li>
+        <li><strong>Feature Selection and Handling Imbalanced Data:</strong> 
+            <ul>
+                <li>White Paper: Specific features listed, class imbalance handled with 'balanced' parameter and SMOTE</li>
+                <li>Code: Features not explicitly mentioned, no imbalance handling</li>
+                <li style="color: red;">Mismatch: Feature selection and imbalance handling not addressed in the code.</li>
+            </ul>
+        </li>
+        <li><strong>Model Architecture:</strong> 
+            <ul>
+                <li>White Paper: Logistic Regression</li>
+                <li>Code: XGBoost</li>
+                <li style="color: red;">Mismatch: Different models used.</li>
+            </ul>
+        </li>
+        <li><strong>Baseline Metrics and Fallback Mechanism:</strong> 
+            <ul>
+                <li>White Paper: Precision, Recall, F1-score, PR-AUC</li>
+                <li>Code: Accuracy, Recall, Precision, F1 Score</li>
+                <li style="color: red;">Mismatch: PR-AUC missing in the code.</li>
+                <li>Fallback Mechanism: Not mentioned in either source.</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h3>2. Validation Metrics<br></h3>
+    <ul style="list-style-type: none; padding: 0;">
+        <li>White Paper: Precision, Recall, F1-score, PR-AUC</li>
+        <li>Code: Accuracy, Recall, Precision, F1 Score</li>
+        <li style="color: red;">Mismatch: PR-AUC missing in the code.</li>
+    </ul>
+
+    <h3>3. Hyperparameter Configuration<br></h3>
+    <ul style="list-style-type: none; padding: 0;">
+        <li>White Paper: Penalty, C, Solver, Max_iter</li>
+        <li>Code: eta, min_child_weight, gamma, subsample, colsample_bytree</li>
+        <li style="color: red;">Mismatch: Different hyperparameters used.</li>
+    </ul>
+
+    <h3>4. Final Summary<br></h3>
+    <p>The code implementation does not align with the white paper. The white paper specifies a logistic regression model with specific preprocessing and validation strategies, while the code uses XGBoost with different hyperparameters and metrics.</p>
+    <p style="color: red;">White paper is not aligned with the code. Please update the white paper accordingly.</p>
+</div>
+```

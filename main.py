@@ -100,6 +100,7 @@ source_folder = "Documents/GitHub/code-validator/"
 # file_name = "Load Prediction Whitepaper.pdf"       # input 
 version_id = int(7)                                # input 
 # file_path = source_folder+file_name
+outout_file_path = "white_paper_comparision.txt"   # input  
 
 def access_token_key(client_id, authority):
     scopes = ["Files.Read"]
@@ -388,9 +389,9 @@ def refine_extracted_elements_with_context(similar_elements, query_context):
     combined_elements = "\n\n".join(similar_elements)
     prompt = [
         SystemMessage(content="You are a product analyst."),
+               
         HumanMessage(content=f"""
-        The following are the top 5 similar elements retrieved from a vector database:
-
+        The following are the top 5 similar elements retrieved from a vector database and  create a structured report in HTML format with the following three sections, using dangerouslySetInnerHTML={{ __html: reportMarkdown }}; html should not affect other elements : 
         {combined_elements}
 
         The original query context is:
@@ -405,6 +406,24 @@ def refine_extracted_elements_with_context(similar_elements, query_context):
         - Format the response using IPython Markdown style for readability
 
         """)
+
+        # HumanMessage(content=f"""
+        # The following are the top 5 similar elements retrieved from a vector database : 
+
+        # {combined_elements}
+
+        # The original query context is:
+        # "{query_context}"
+
+        # - Identify and extract only the most relevant elements or functionalities.
+        # - Avoid verbose explanations; focus on clarity and precision.
+        # - Extract details from given context keep length short in summary format 
+        # - Do not recommend, only extract
+        # - Extract metrics score/values, model name and and hyperpapramter values if available in context 
+        # - Provide concise, bullet-pointed outputs or insights based on retrieved data.
+        # - Format the response using IPython Markdown style for readability
+
+        # """)
     ]
     return llm(prompt).content.strip()
 
@@ -415,7 +434,7 @@ def compare_functionalities(whitepaper_funcs, code_funcs):
         Whitepaper Functionalities:
         {whitepaper_funcs}
 
-        Code Functionalities:
+        Code Functionalities and create a structured report in HTML format with the following three sections, using dangerouslySetInnerHTML={{ __html: reportMarkdown }}; html should not affect other elements
         {code_funcs}
         Compare each functionality described in the white paper with the corresponding code implementation. For every element, document whether it is implemented, partially implemented, or missing in the code.
 
@@ -436,8 +455,21 @@ def summarize(whitepaper_text):
     prompt = [
         SystemMessage(content="You are a product analyst."),
         HumanMessage(content=f"""
-        Here is the whitepaper or product requirement document with code:
+        Create exactly three top-level sections with these subheadings, in this order: White paper, code, Minmatch.
 
+        Immediately after each subheading, insert a <br> tag.
+
+        The HTML will be rendered in React via dangerouslySetInnerHTML={{ __html: reportMarkdown }} — ensure the markup is self-contained and does not affect other page elements:
+
+        No external CSS/JS.
+
+        Avoid global selectors (e.g., body, *) and global side effects.
+
+        Use inline styles or classes that are unique to this snippet; no conflicting IDs/classes.
+
+        Stick strictly to the input content; do not add, remove, or invent information.
+
+        Output: only the HTML string, nothing else.
         {whitepaper_text}
          
         Give brief objective of white paper at top. Summarize and condense the content from both the updated version and the white paper into a structured report. Remove any duplicate information and present the findings in a clear, organized format.
@@ -595,11 +627,19 @@ def main():
             # st.write("-------------------------------------------------------")
             # st.write('Summarizing report findings...')
             output = summarize("\n\n".join(list_missing_funcs))
-            st.write(output)     
+            st.write(output)  
+
+
 
 # -------------------- End Compare functionality ---------------------      
-# 
-#       
+#  
+# -------------------- Start Save .txt putput of file -------------------
+#          # Save to .txt file
+            with open(outout_file_path, "w", encoding="utf-8") as f:
+                f.write(output)   
+
+# ------------------End Save .txt functionality -----------------
+            
             return output       # Main Output
 
                                          

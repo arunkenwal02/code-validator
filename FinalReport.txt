@@ -1,0 +1,26 @@
+```html
+<div dangerouslySetInnerHTML={{ __html: reportMarkdown }}>
+    <h1>Validation Metrics</h1>
+    <p>The code implementation provides specific metrics such as <strong>f1_score</strong>, <strong>precision_score</strong>, <strong>recall_score</strong>, and <strong>accuracy_score</strong>. However, the white paper emphasizes high precision, recall, and F1-score without specifying exact values. This indicates a potential gap in the documentation of expected versus actual performance metrics.</p>
+    <p><strong>Strengths:</strong> The code includes a comprehensive set of evaluation metrics.</p>
+    <p><strong>Weaknesses:</strong> The white paper lacks specific metric values, making it difficult to assess alignment with the code.</p>
+
+    <h1>Code Comparison Inferences</h1>
+    <p>The code implementation diverges significantly from the white paper's objectives. The white paper specifies the use of Logistic Regression, while the code implements XGBoost (XGBClassifier). Additionally, there are discrepancies in data splitting strategies and feature selection. The white paper suggests handling imbalanced data using techniques like SMOTE, which are not mentioned in the code.</p>
+    <p><strong>Alignments:</strong> Both the white paper and code aim to predict loan approval.</p>
+    <p><strong>Discrepancies:</strong> Model selection, data handling, and preprocessing steps differ significantly.</p>
+    <p><strong>Missing Elements:</strong> The code lacks explicit preprocessing steps and imbalance handling techniques.</p>
+    <p><strong>Improvements:</strong> The code introduces a more advanced model (XGBoost) which may offer better performance.</p>
+    <p><strong>Regressions:</strong> The lack of alignment with the white paper's specified model and techniques.</p>
+
+    <h1>Recommendations</h1>
+    <p>To improve alignment and performance, the following steps are recommended:</p>
+    <ul>
+        <li>Update the white paper to reflect the use of XGBoost and its associated hyperparameters.</li>
+        <li>Incorporate preprocessing steps and imbalance handling techniques in the code, such as SMOTE or class weighting.</li>
+        <li>Provide specific performance metrics in the white paper to facilitate comparison with the code.</li>
+        <li>Consider revisiting the feature selection process to ensure all relevant features are included.</li>
+    </ul>
+    <p>These changes aim to enhance the accuracy, consistency, and robustness of the system.</p>
+</div>
+```
