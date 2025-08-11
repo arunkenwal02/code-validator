@@ -1,65 +1,55 @@
 ```html
 <div>
-    <h2>White paper<br></h2>
-    <p style="font-weight: bold;">Objective:</p>
-    <p>The white paper aims to outline a machine learning-based loan approval prediction system, focusing on improving decision quality, reducing operational costs, and integrating alternative data sources for enhanced predictive power.</p>
-    
-    <h3>1. Model Overview<br></h3>
-    <ul style="list-style-type: none; padding: 0;">
-        <li><strong>Data Splitting Strategy:</strong> 
-            <ul>
-                <li>White Paper: Training (70%), Validation (15%), Testing (15%)</li>
-                <li>Code: Training (70%), Validation (30%)</li>
-                <li style="color: red;">Mismatch: Testing set not mentioned in the code.</li>
-            </ul>
-        </li>
-        <li><strong>Preprocessing Steps:</strong> 
-            <ul>
-                <li>White Paper: Imputation using mode, normalization, one-hot encoding</li>
-                <li>Code: One-hot encoding, column type changes</li>
-                <li style="color: red;">Mismatch: Imputation and normalization not mentioned in the code.</li>
-            </ul>
-        </li>
-        <li><strong>Feature Selection and Handling Imbalanced Data:</strong> 
-            <ul>
-                <li>White Paper: Specific features listed, class imbalance handled with 'balanced' parameter and SMOTE</li>
-                <li>Code: Features not explicitly mentioned, no imbalance handling</li>
-                <li style="color: red;">Mismatch: Feature selection and imbalance handling not addressed in the code.</li>
-            </ul>
-        </li>
-        <li><strong>Model Architecture:</strong> 
-            <ul>
-                <li>White Paper: Logistic Regression</li>
-                <li>Code: XGBoost</li>
-                <li style="color: red;">Mismatch: Different models used.</li>
-            </ul>
-        </li>
-        <li><strong>Baseline Metrics and Fallback Mechanism:</strong> 
-            <ul>
-                <li>White Paper: Precision, Recall, F1-score, PR-AUC</li>
-                <li>Code: Accuracy, Recall, Precision, F1 Score</li>
-                <li style="color: red;">Mismatch: PR-AUC missing in the code.</li>
-                <li>Fallback Mechanism: Not mentioned in either source.</li>
-            </ul>
-        </li>
-    </ul>
+  <h1>Objective of the White Paper</h1>
+  <p>The white paper aims to describe a machine learning-based solution for optimizing loan approval workflows, focusing on modernizing the traditional process to meet digital banking demands and exploring future enhancements through alternative data sources.</p>
 
-    <h3>2. Validation Metrics<br></h3>
-    <ul style="list-style-type: none; padding: 0;">
-        <li>White Paper: Precision, Recall, F1-score, PR-AUC</li>
-        <li>Code: Accuracy, Recall, Precision, F1 Score</li>
-        <li style="color: red;">Mismatch: PR-AUC missing in the code.</li>
-    </ul>
+  <h2>1. Summary</h2>
+  <p>The white paper outlines a comprehensive approach to loan approval optimization using machine learning, while the code focuses on data preprocessing, parameter tuning, and evaluation metrics.</p>
 
-    <h3>3. Hyperparameter Configuration<br></h3>
-    <ul style="list-style-type: none; padding: 0;">
-        <li>White Paper: Penalty, C, Solver, Max_iter</li>
-        <li>Code: eta, min_child_weight, gamma, subsample, colsample_bytree</li>
-        <li style="color: red;">Mismatch: Different hyperparameters used.</li>
-    </ul>
+  <h2>2. Preprocessing Steps</h2>
+  <ul>
+    <li><strong>Data Splitting Strategy:</strong> The white paper describes a 70-15-15 split for training, validation, and testing, while the code does not specify this.</li>
+    <li><strong>Feature Engineering:</strong> The white paper mentions one-hot encoding and normalization, whereas the code focuses on data type conversion and one-hot encoding.</li>
+  </ul>
 
-    <h3>4. Final Summary<br></h3>
-    <p>The code implementation does not align with the white paper. The white paper specifies a logistic regression model with specific preprocessing and validation strategies, while the code uses XGBoost with different hyperparameters and metrics.</p>
-    <p style="color: red;">White paper is not aligned with the code. Please update the white paper accordingly.</p>
+  <h2>3. Handle Imbalance Data</h2>
+  <p>The white paper suggests using 'class_weight' and SMOTE for handling class imbalance, but the code does not mention these methods.</p>
+
+  <h2>4. Feature Selection</h2>
+  <ul>
+    <li><strong>White Paper Features:</strong> Applicant_Income, Coapplicant_Income, Loan_Amount, etc.</li>
+    <li><strong>Code Features:</strong> Gender, Married, Dependents, etc.</li>
+    <li><strong>Mismatch:</strong> There is a mismatch in the features used between the white paper and the code.</li>
+  </ul>
+
+  <h2>5. Model Overview</h2>
+  <ul>
+    <li><strong>White Paper Model:</strong> Logistic Regression with emphasis on recall and F1 score.</li>
+    <li><strong>Code Model:</strong> Not explicitly mentioned.</li>
+    <li><strong>Mismatch:</strong> The model overview in the white paper and code do not align.</li>
+  </ul>
+
+  <h2>6. Validation Metrics</h2>
+  <ul>
+    <li><strong>White Paper Metrics:</strong> Precision, Recall, F1-score, PR-AUC.</li>
+    <li><strong>Code Metrics:</strong> f1_score, precision_score, recall_score, accuracy_score.</li>
+    <li><strong>Mismatch:</strong> The code does not mention PR-AUC, which is emphasized in the white paper.</li>
+  </ul>
+
+  <h2>7. Hyperparameter Configuration</h2>
+  <ul>
+    <li><strong>White Paper:</strong> Penalty, C, Solver, Max_iter.</li>
+    <li><strong>Code:</strong> eta, min_child_weight, gamma, subsample, colsample_bytree.</li>
+    <li><strong>Mismatch:</strong> There is a mismatch in hyperparameter configurations between the white paper and the code.</li>
+  </ul>
+
+  <h2>8. Critical Metrics</h2>
+  <p>The white paper emphasizes PR-AUC due to class imbalance, which is not mentioned in the code.</p>
+
+  <h2>9. Fallback Mechanism</h2>
+  <p>The white paper mentions human oversight for high-impact decisions, but the code does not address fallback mechanisms.</p>
+
+  <h2>10. Final Summary</h2>
+  <p>There are significant mismatches between the white paper and the code. The white paper is not aligned with the code. Please update the white paper accordingly.</p>
 </div>
 ```

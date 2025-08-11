@@ -28,13 +28,13 @@ def read_file(path: str) -> str:
 
 def generate_summary(Push_Commit_summary: str, White_paper_comparision: str) -> str:
     """Takes two text inputs + instruction, returns LLM output."""
-    llm = ChatOpenAI(model=MODEL, temperature=0.0, openai_api_key=os.getenv("OPENAI_API_KEY"))
     
     # 2) Define instruction
     instruction = (
 
     '''
         You are an AI report generator. Based on the inputs provided, create a structured report in HTML format with the following three sections:
+        create a structured report in HTML format with the following three sections, using dangerouslySetInnerHTML={{ __html: reportMarkdown }}; html should not affect other elements
 
         1. **Validation Metrics**
             - Summarize model evaluation metrics (Accuracy, Precision, Recall, F1 Score, AUC, etc.).
@@ -64,15 +64,18 @@ def generate_summary(Push_Commit_summary: str, White_paper_comparision: str) -> 
     ]).content
 
 
-
-Push_Commit_summary = read_file("Push_Commit_summary_outout.txt")
+'''
+Push_Commit_summary = read_file("event_summary.txt.txt")
 White_paper_comparision = read_file("white_paper_comparision.txt")
+'''
+
+
 
 
 # 3) Get output
-output = generate_summary(Push_Commit_summary, White_paper_comparision)
+# output = generate_summary(Push_Commit_summary, White_paper_comparision)
 
 # 4) Print + save
-print(output)
-Path(OUTPUT_FILE).write_text(output, encoding="utf-8")
-print(f"\nSaved to {OUTPUT_FILE}")
+#print(output)
+# Path(OUTPUT_FILE).write_text(output, encoding="utf-8")
+# print(f"\nSaved to {OUTPUT_FILE}")

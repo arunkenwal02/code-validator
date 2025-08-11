@@ -1,26 +1,46 @@
 ```html
-<div dangerouslySetInnerHTML={{ __html: reportMarkdown }}>
-    <h1>Validation Metrics</h1>
-    <p>The code implementation provides specific metrics such as <strong>f1_score</strong>, <strong>precision_score</strong>, <strong>recall_score</strong>, and <strong>accuracy_score</strong>. However, the white paper emphasizes high precision, recall, and F1-score without specifying exact values. This indicates a potential gap in the documentation of expected versus actual performance metrics.</p>
-    <p><strong>Strengths:</strong> The code includes a comprehensive set of evaluation metrics.</p>
-    <p><strong>Weaknesses:</strong> The white paper lacks specific metric values, making it difficult to assess alignment with the code.</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h2 { color: #2c3e50; }
+        h3 { color: #34495e; }
+        ul { list-style-type: none; padding: 0; }
+        li { margin-bottom: 10px; }
+    </style>
+</head>
+<body>
 
-    <h1>Code Comparison Inferences</h1>
-    <p>The code implementation diverges significantly from the white paper's objectives. The white paper specifies the use of Logistic Regression, while the code implements XGBoost (XGBClassifier). Additionally, there are discrepancies in data splitting strategies and feature selection. The white paper suggests handling imbalanced data using techniques like SMOTE, which are not mentioned in the code.</p>
-    <p><strong>Alignments:</strong> Both the white paper and code aim to predict loan approval.</p>
-    <p><strong>Discrepancies:</strong> Model selection, data handling, and preprocessing steps differ significantly.</p>
-    <p><strong>Missing Elements:</strong> The code lacks explicit preprocessing steps and imbalance handling techniques.</p>
-    <p><strong>Improvements:</strong> The code introduces a more advanced model (XGBoost) which may offer better performance.</p>
-    <p><strong>Regressions:</strong> The lack of alignment with the white paper's specified model and techniques.</p>
+    <h2>1. Validation Metrics</h2>
+    <p>The model evaluation metrics include Accuracy, Precision, Recall, F1 Score, and AUC. The strengths of the model are evident in its high precision and recall, indicating effective identification of relevant instances. However, the absence of PR-AUC in the code, as mentioned in the white paper, suggests a potential area for improvement in evaluating the model's performance across different thresholds.</p>
 
-    <h1>Recommendations</h1>
-    <p>To improve alignment and performance, the following steps are recommended:</p>
+    <h2>2. Code Comparison Inferences</h2>
+    <p>The implemented code functionalities show several discrepancies when compared to the white paper's goals:</p>
     <ul>
-        <li>Update the white paper to reflect the use of XGBoost and its associated hyperparameters.</li>
-        <li>Incorporate preprocessing steps and imbalance handling techniques in the code, such as SMOTE or class weighting.</li>
-        <li>Provide specific performance metrics in the white paper to facilitate comparison with the code.</li>
-        <li>Consider revisiting the feature selection process to ensure all relevant features are included.</li>
+        <li><strong>Model Choice:</strong> The white paper suggests using logistic regression, while the code implements an XGBoost model.</li>
+        <li><strong>Data Processing:</strong> The code includes one-hot encoding and column type changes, which are not explicitly mentioned in the white paper.</li>
+        <li><strong>Imbalance Handling:</strong> The white paper outlines methods like class weighting and SMOTE, which are not present in the code.</li>
+        <li><strong>Feature Selection:</strong> The code omits several features listed in the white paper, such as ApplicantIncome and LoanAmount.</li>
+        <li><strong>Validation Metrics:</strong> The code lacks PR-AUC, which is highlighted in the white paper.</li>
+        <li><strong>Fallback Mechanism:</strong> The white paper describes human oversight, which is not implemented in the code.</li>
     </ul>
-    <p>These changes aim to enhance the accuracy, consistency, and robustness of the system.</p>
-</div>
+    <p>Overall, the code reflects a shift towards a more complex model with different preprocessing and evaluation strategies, but it diverges from the white paper's original framework.</p>
+
+    <h2>3. Recommendations</h2>
+    <ul>
+        <li><strong>Model Alignment:</strong> Consider aligning the model choice with the white paper's logistic regression or update the white paper to reflect the use of XGBoost.</li>
+        <li><strong>Data Processing Consistency:</strong> Ensure that data preprocessing steps in the code are documented and justified in the white paper.</li>
+        <li><strong>Imbalance Handling:</strong> Implement imbalance handling techniques such as SMOTE or class weighting as described in the white paper.</li>
+        <li><strong>Feature Inclusion:</strong> Re-evaluate the feature selection process to include all relevant features mentioned in the white paper.</li>
+        <li><strong>Metric Evaluation:</strong> Incorporate PR-AUC in the code to provide a comprehensive evaluation of the model's performance.</li>
+        <li><strong>Fallback Mechanism:</strong> Develop a fallback mechanism involving human oversight for uncertain cases, as suggested in the white paper.</li>
+    </ul>
+    <p>These recommendations aim to enhance the model's accuracy, consistency, and robustness, ensuring alignment with the project's documented objectives.</p>
+
+</body>
+</html>
 ```
