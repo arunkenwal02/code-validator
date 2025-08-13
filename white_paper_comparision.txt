@@ -1,55 +1,109 @@
 ```html
 <div>
-  <h1>Objective of the White Paper</h1>
-  <p>The white paper aims to describe a machine learning-based solution for optimizing loan approval workflows, focusing on modernizing the traditional process to meet digital banking demands and exploring future enhancements through alternative data sources.</p>
+  <h2>Objective of the White Paper</h2>
+  <p>The white paper aims to develop a balanced and inclusive loan approval system that minimizes defaults by leveraging logistic regression and data preprocessing techniques to handle imbalances and improve model performance.</p>
 
-  <h2>1. Summary</h2>
-  <p>The white paper outlines a comprehensive approach to loan approval optimization using machine learning, while the code focuses on data preprocessing, parameter tuning, and evaluation metrics.</p>
+  <h2>Report Structure</h2>
 
-  <h2>2. Preprocessing Steps</h2>
+  <h3>1. Summary</h3>
+  <p>The white paper focuses on creating a machine learning-based loan approval system, emphasizing logistic regression and data preprocessing. The code, however, centers on data visualization and analysis without explicitly implementing logistic regression or preprocessing steps.</p>
+
+  <h3>2. Preprocessing Steps</h3>
   <ul>
-    <li><strong>Data Splitting Strategy:</strong> The white paper describes a 70-15-15 split for training, validation, and testing, while the code does not specify this.</li>
-    <li><strong>Feature Engineering:</strong> The white paper mentions one-hot encoding and normalization, whereas the code focuses on data type conversion and one-hot encoding.</li>
+    <li><strong>Data Splitting Strategy:</strong>
+      <ul>
+        <li>White Paper: Training set (70%), Testing set (30%)</li>
+        <li>Code: Includes a validation set, but exact split percentages are not provided.</li>
+        <li><strong>Mismatch:</strong> The code includes a validation set not mentioned in the white paper.</li>
+      </ul>
+    </li>
+    <li><strong>Feature Engineering:</strong>
+      <ul>
+        <li>White Paper: Lists features like Gender, Married, Dependents, etc.</li>
+        <li>Code: Provides a list of categorical columns and summary statistics.</li>
+        <li><strong>Mismatch:</strong> The code focuses on data visualization rather than feature engineering.</li>
+      </ul>
+    </li>
   </ul>
 
-  <h2>3. Handle Imbalance Data</h2>
-  <p>The white paper suggests using 'class_weight' and SMOTE for handling class imbalance, but the code does not mention these methods.</p>
-
-  <h2>4. Feature Selection</h2>
+  <h3>3. Handle Imbalance Data</h3>
   <ul>
-    <li><strong>White Paper Features:</strong> Applicant_Income, Coapplicant_Income, Loan_Amount, etc.</li>
-    <li><strong>Code Features:</strong> Gender, Married, Dependents, etc.</li>
-    <li><strong>Mismatch:</strong> There is a mismatch in the features used between the white paper and the code.</li>
+    <li><strong>Methods:</strong>
+      <ul>
+        <li>White Paper: 'class_weight' = 'balanced', SMOTE</li>
+        <li>Code: No mention of handling imbalance.</li>
+        <li><strong>Mismatch:</strong> The code does not address imbalance handling as described in the white paper.</li>
+      </ul>
+    </li>
   </ul>
 
-  <h2>5. Model Overview</h2>
+  <h3>4. Feature Selection</h3>
   <ul>
-    <li><strong>White Paper Model:</strong> Logistic Regression with emphasis on recall and F1 score.</li>
-    <li><strong>Code Model:</strong> Not explicitly mentioned.</li>
-    <li><strong>Mismatch:</strong> The model overview in the white paper and code do not align.</li>
+    <li><strong>Features Used:</strong>
+      <ul>
+        <li>White Paper: Gender, Married, Dependents, etc.</li>
+        <li>Code: Categorical columns like Gender, Married, etc.</li>
+        <li><strong>Mismatch:</strong> The code lists categorical columns but does not focus on feature selection.</li>
+      </ul>
+    </li>
   </ul>
 
-  <h2>6. Validation Metrics</h2>
+  <h3>5. Model Overview</h3>
   <ul>
-    <li><strong>White Paper Metrics:</strong> Precision, Recall, F1-score, PR-AUC.</li>
-    <li><strong>Code Metrics:</strong> f1_score, precision_score, recall_score, accuracy_score.</li>
-    <li><strong>Mismatch:</strong> The code does not mention PR-AUC, which is emphasized in the white paper.</li>
+    <li><strong>Model Architecture:</strong>
+      <ul>
+        <li>White Paper: Logistic Regression</li>
+        <li>Code: XGBoost Model</li>
+        <li><strong>Mismatch:</strong> The white paper specifies Logistic Regression, while the code uses XGBoost.</li>
+      </ul>
+    </li>
   </ul>
 
-  <h2>7. Hyperparameter Configuration</h2>
+  <h3>6. Validation Metrics</h3>
   <ul>
-    <li><strong>White Paper:</strong> Penalty, C, Solver, Max_iter.</li>
-    <li><strong>Code:</strong> eta, min_child_weight, gamma, subsample, colsample_bytree.</li>
-    <li><strong>Mismatch:</strong> There is a mismatch in hyperparameter configurations between the white paper and the code.</li>
+    <li><strong>Metrics and Scores:</strong>
+      <ul>
+        <li>White Paper: Accuracy: 85%, Precision: 82%, Recall: 78%, F1 Score: 80%</li>
+        <li>Code: Lists metrics without specific values.</li>
+        <li><strong>Mismatch:</strong> The code does not provide specific metric values as in the white paper.</li>
+      </ul>
+    </li>
   </ul>
 
-  <h2>8. Critical Metrics</h2>
-  <p>The white paper emphasizes PR-AUC due to class imbalance, which is not mentioned in the code.</p>
+  <h3>7. Hyperparameter Configuration</h3>
+  <ul>
+    <li><strong>Hyperparameters:</strong>
+      <ul>
+        <li>White Paper: Logistic Regression C: 0.1, etc.</li>
+        <li>Code: Uses GridSearchCV without specific values.</li>
+        <li><strong>Mismatch:</strong> The code does not specify hyperparameter values as in the white paper.</li>
+      </ul>
+    </li>
+  </ul>
 
-  <h2>9. Fallback Mechanism</h2>
-  <p>The white paper mentions human oversight for high-impact decisions, but the code does not address fallback mechanisms.</p>
+  <h3>8. Critical Metrics</h3>
+  <ul>
+    <li><strong>Metrics:</strong>
+      <ul>
+        <li>White Paper: Not explicitly mentioned.</li>
+        <li>Code: Not explicitly mentioned.</li>
+        <li><strong>Mismatch:</strong> No critical metrics are highlighted in either the white paper or the code.</li>
+      </ul>
+    </li>
+  </ul>
 
-  <h2>10. Final Summary</h2>
-  <p>There are significant mismatches between the white paper and the code. The white paper is not aligned with the code. Please update the white paper accordingly.</p>
+  <h3>9. Fallback Mechanism</h3>
+  <ul>
+    <li><strong>Mechanism:</strong>
+      <ul>
+        <li>White Paper: Human oversight for high-impact decisions.</li>
+        <li>Code: Not mentioned.</li>
+        <li><strong>Mismatch:</strong> The code does not include a fallback mechanism as described in the white paper.</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h3>10. Final Summary</h3>
+  <p>The white paper and code are not aligned. The white paper focuses on logistic regression and preprocessing, while the code emphasizes data visualization and analysis. <strong>White paper is not aligned with the code. Please update the white paper accordingly.</strong></p>
 </div>
 ```

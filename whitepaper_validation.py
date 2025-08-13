@@ -199,7 +199,6 @@ def read_white_paper_from_gcp(filename, base_url, version_number):
 
  
 
-
 def extract_from_pdf(whitepaper_name : str, base_url : str,version_number : int) -> str:
     return read_white_paper_from_gcp(whitepaper_name, base_url, version_number)
 
