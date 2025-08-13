@@ -3,7 +3,6 @@ from langchain.schema import SystemMessage, HumanMessage
 from dotenv import load_dotenv
 from IPython.display import Markdown, display
 import os
-
 from pathlib import Path
 from langchain_openai import ChatOpenAI
 
@@ -33,18 +32,16 @@ def generate_summary(Push_Commit_summary: str, White_paper_comparision: str) -> 
     instruction = (
 
     '''
-        You are an AI report generator. Based on the inputs provided, create a structured report in HTML format with the following three sections:
+        You are an AI report generator. Based on the inputs provided,
         create a structured report in HTML format with the following three sections, using dangerouslySetInnerHTML={{ __html: reportMarkdown }}; html should not affect other elements
 
         1. **Validation Metrics**
             - Summarize model evaluation metrics (Accuracy, Precision, Recall, F1 Score, AUC, etc.).
             - Highlight strengths or weaknesses in these metrics.
-
         2. **Code Comparison Inferences**
             - Compare implemented code functionalities with described goals or documentation (e.g., whitepaper).
             - Identify alignments, discrepancies, or missing elements.
             - Highlight improvements or regressions.
-
         3. **Recommendations**
             - Suggest improvements or next steps based on validation results and code comparison.
             - Include actionable changes to improve accuracy, consistency, or system robustness.
@@ -53,9 +50,9 @@ def generate_summary(Push_Commit_summary: str, White_paper_comparision: str) -> 
     )
 
     user_content = (
-        f"{instruction}\n\n"
-        f"## Document A\n```\n{Push_Commit_summary}\n```\n\n"
-        f"## Document B\n```\n{White_paper_comparision}\n```\n"
+        f"{instruction}\n"
+        f"## Document A:{Push_Commit_summary}\n"
+        f"## Document B:{White_paper_comparision}\n"
     )
     
     return llm.invoke([
