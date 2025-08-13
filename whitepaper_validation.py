@@ -7,7 +7,6 @@ import base64
 import time
 import hashlib
 from datetime import datetime
-
 import requests
 import fitz
 import pandas as pd
@@ -15,7 +14,6 @@ import chromadb
 from chromadb.config import Settings
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
 # --- LLM / LangChain ---
 from langchain_openai import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
@@ -24,7 +22,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 
 load_dotenv()
-
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is not set.")
@@ -46,7 +43,7 @@ MSAL_SCOPES = ["Files.Read"]
 # GitHub config
 GITHUB_OWNER = "arunkenwal02"
 GITHUB_REPO = "code-validator"
-NOTEBOOK_FILE_PATH = "loan-approval-prediction_v2.ipynb"
+NOTEBOOK_FILE_PATH = "loan-approval-prediction_v1.ipynb"
 
 # Output file (as in your code)
 OUTPUT_TXT = "white_paper_comparision.txt"
@@ -163,8 +160,51 @@ def prev_version(client_id: str, authority: str, file_path: str, version_number:
         all_text += f"\n--- Page {page_num+1} ---\n{page.get_text()}"
     return all_text
 
-def extract_from_pdf(client_id: str, authority: str, file_path: str, version_number: int) -> str:
-    return prev_version(client_id=client_id, authority=authority, file_path=file_path, version_number=version_number)
+
+# pip install pymupdf requests
+
+import fitz  # pymupdf
+import requests
+from io import BytesIO
+from urllib.parse import quote
+
+
+
+def read_white_paper_from_gcp(filename, base_url, version_number):
+    # Safely encode filename for a URL
+
+    filename = "Load Prediction Whitepaper.pdf"
+    filename.split(".")
+    encoded_filename = quote(filename.split(".")[0])
+    file_type = filename.split(".")[1]
+    url = f"{base_url}{encoded_filename}_v{version_number}.{file_type}"
+
+    # Download the PDF into memory
+    response = requests.get(url)
+    response.raise_for_status()
+
+    # Open PDF from bytes
+    pdf_stream = BytesIO(response.content)
+    doc = fitz.open(stream=pdf_stream, filetype="pdf")
+    text_block = ""
+    # Iterate through pages
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        text = page.get_text("text")  # Extract as plain text
+        text_block += f"--- Page {page_num + 1} ---\n{text}\n\n"
+        print(f"--- Page {page_num + 1} ---")
+        print(text)
+        # print()
+    return text_block 
+
+ 
+
+
+def extract_from_pdf(whitepaper_name : str, base_url : str,version_number : int) -> str:
+    return read_white_paper_from_gcp(whitepaper_name, base_url, version_number)
+
+# def extract_from_pdf(client_id: str, authority: str, file_path: str, version_number: int) -> str:
+#     return prev_version(client_id=client_id, authority=authority, file_path=file_path, version_number=version_number)
 
 # -------------------- GitHub helpers --------------------
 
@@ -346,28 +386,28 @@ Follow sequence: Summart, Model Overview, train_test_split, Preprocessing step, 
         - Methods to hanlde imbalance data on both Code and white paper
 
     4. Feature Selection:
-        - list down featuress used in white paper and code. and show Mismatch if there is any mismatch in feature
+        - list down all featuress used in white paper and code.
         - show Mismatch if there is any mismatch in fetures
 
     5. Model Overview
-        - Extract and compare model information from the notebook and white paper ,Model architecture or Main model used for prediction
-        - show Mismatch if there is any mismatch in Model Overview
+        - Extract and compare model information from the notebook and white paper ,Model architecture or Main model used for prediction.
+        - show Mismatch if there is any mismatch in Model Overview.
 
     6. Validation Metrics
-        - Compile validation metrics and scores from both the white paper and the notebook/updated version.
-        - show Mismatch if there is any mismatch in validation metrics
+        - Show all validation metrics and scores from both the white paper and the notebook/updated version.
+        - show mismatch if there is any mismatch in validation metrics.
 
     7. Hyperparameter Configuration
-        - List hyperparameters used in the model(s) from both sources. and respective scores
+        - List hyperparameters used in the model(s) and respective scores.
         - Mismatches id there is any otherwise there is no mismatch in code and white papaer.
 
     8. Critical metrics:
         - List critical metics if available.
-        -show Mismatch if there is any mismatch in critical metrics
+        -show mismatch if there is any mismatch in critical metrics.
 
     9. Fallback mechanism
-        - List fall back mechanish present in white paper and code
-        - Show Mismatch if there is any mismatch in Fallback mechanism
+        - List fall back mechanish present in white paper and code.
+        - Show Mismatch if there is any mismatch in Fallback mechanism.
 
     10. Final Summary
         - Clearly state whether the notebook and white paper are aligned.
@@ -401,17 +441,29 @@ def get_latest_push_id_from_file(path: str = "push_events.json") -> str:
     first_col = df.columns[0]
     return str(df[first_col].tolist()[0])
 
+
 def main(whitepaper_name: str, version_number: int) -> str:
     try:
+        base_url = "https://storage.googleapis.com/whitepaper_test/"
         # 1) Whitepaper text via OneDrive version
-        file_path = f"Documents/GitHub/code-validator/{whitepaper_name}"
-        whitepaper_text = extract_from_pdf(MSAL_CLIENT_ID, MSAL_AUTHORITY, file_path, int(version_number))
+        whitepaper_text = extract_from_pdf(whitepaper_name, base_url, version_number)
         whitepaper_hash = get_string_hash(whitepaper_text)
         collection_wp, _ = get_or_create_embeddings(
             text=whitepaper_text,
             _embedding_model=embedding_model,
             collection_name=f"whitepaper_{whitepaper_hash}"
         )
+
+
+        # # 1) Whitepaper text via OneDrive version
+        # file_path = f"Documents/GitHub/code-validator/{whitepaper_name}"
+        # whitepaper_text = extract_from_pdf(file_path)
+        # whitepaper_hash = get_string_hash(whitepaper_text)
+        # collection_wp, _ = get_or_create_embeddings(
+        #     text=whitepaper_text,
+        #     _embedding_model=embedding_model,
+        #     collection_name=f"whitepaper_{whitepaper_hash}"
+        # )
 
         # 2) Query & refine for whitepaper
         list_pdf_docs = queryFun_parallel(QUERIES, embedding_model, collection_wp)
@@ -463,3 +515,4 @@ def main(whitepaper_name: str, version_number: int) -> str:
     except Exception as e:
         # Bubble up so FastAPI can return proper error
         raise
+

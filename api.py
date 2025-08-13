@@ -38,7 +38,7 @@ def input_file_name(
         raise HTTPException(status_code=500, detail=str(e))
     
     
-@app.post("/report_summary")
+@app.post("/check")
 def input_file_name():
     try:
         Push_Commit_summary = rg.read_file("event_summary.txt")
@@ -51,6 +51,14 @@ def input_file_name():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/check")
+@app.get("/report_summary")
 def get_test():
-    return "Hello World"
+    try:    
+        Push_Commit_summary = rg.read_file("event_summary.txt")
+        White_paper_comparision = rg.read_file("white_paper_comparision.txt")
+        result = rg.generate_summary(Push_Commit_summary, White_paper_comparision)
+
+        return result  # keep same behavior (plain string)
+    except Exception as e:
+        # Return a clear 500 with details
+        raise HTTPException(status_code=500, detail=str(e))
