@@ -55,7 +55,7 @@ def input_file_name():
 def get_test():
     try:    
         Push_Commit_summary = rg.read_file("event_summary.txt")
-        White_paper_comparision = rg.read_file("white_paper_comparision.txt")
+        White_paper_comparision = rg.read_file("white_paper_comparision_with_updated_code_diff.txt")
         result = rg.generate_summary(Push_Commit_summary, White_paper_comparision)
 
         return result  # keep same behavior (plain string)
