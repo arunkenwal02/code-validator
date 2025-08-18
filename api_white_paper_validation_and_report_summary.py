@@ -19,7 +19,7 @@ from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import whitepaper_validation  as wv
-import report_generation as rg
+import report_summary as rs
 # ---------------- App init ----------------
 app = FastAPI()
 
@@ -41,9 +41,9 @@ def input_file_name(
 @app.post("/check")
 def input_file_name():
     try:
-        Push_Commit_summary = rg.read_file("event_summary.txt")
-        White_paper_comparision = rg.read_file("white_paper_comparision.txt")
-        result = rg.generate_summary(Push_Commit_summary, White_paper_comparision)
+        Push_Commit_summary = rs.read_file("event_summary.txt")
+        White_paper_comparision = rs.read_file("white_paper_comparision.txt")
+        result = rs.generate_summary(Push_Commit_summary, White_paper_comparision)
 
         return result  # keep same behavior (plain string)
     except Exception as e:
@@ -54,9 +54,9 @@ def input_file_name():
 @app.get("/report_summary")
 def get_test():
     try:    
-        Push_Commit_summary = rg.read_file("event_summary.txt")
-        White_paper_comparision = rg.read_file("white_paper_comparision_with_updated_code_diff.txt")
-        result = rg.generate_summary(Push_Commit_summary, White_paper_comparision)
+        Push_Commit_summary = rs.read_file("event_summary.txt")
+        White_paper_comparision = rs.read_file("white_paper_comparision_with_updated_code_diff.txt")
+        result = rs.generate_summary(Push_Commit_summary, White_paper_comparision)
 
         return result  # keep same behavior (plain string)
     except Exception as e:

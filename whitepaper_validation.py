@@ -1,24 +1,26 @@
 
-from fastapi import FastAPI, HTTPException, Query
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
+from dataclasses import dataclass
 import os
-import json
-import base64
 import time
-import hashlib
 from datetime import datetime
-import requests
 import fitz
 import pandas as pd
 import chromadb
 from chromadb.config import Settings
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
-# --- LLM / LangChain ---
 from langchain_openai import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+import requests, json, base64, hashlib, difflib
+import re
+from io import BytesIO
+from urllib.parse import quote
+from collections import defaultdict
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 load_dotenv()
@@ -34,146 +36,22 @@ embedding_model = OpenAIEmbeddings(model="text-embedding-3-small")
 CHROMA_PATH = "./chroma_openai1"
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 
-# OneDrive / MSAL config (you were using a public client)
-import msal
-MSAL_CLIENT_ID = "6a94cb3a-9869-4b54-ae0b-f4f523df2614"  # consider moving to env
-MSAL_AUTHORITY = "https://login.microsoftonline.com/consumers"
-MSAL_SCOPES = ["Files.Read"]
 
 # GitHub config
 GITHUB_OWNER = "arunkenwal02"
 GITHUB_REPO = "code-validator"
-NOTEBOOK_FILE_PATH = "loan-approval-prediction_v1.ipynb"
+NOTEBOOK_FILE_PATH = "loan-approval-prediction.ipynb"
 
 # Output file (as in your code)
-OUTPUT_TXT = "white_paper_comparision.txt"
+# OUTPUT_TXT = "white_paper_comparision.txt"
 
-# -------------------------------- Utils --------------------------------
-
-def get_file_hash(uploaded_file) -> str:
-    uploaded_file.seek(0)
-    hash_val = hashlib.sha256(uploaded_file.read()).hexdigest()
-    uploaded_file.seek(0)
-    return hash_val
-
-def get_string_hash(text_data: str) -> str:
-    return hashlib.sha256(text_data.encode("utf-8")).hexdigest()
-
-def collection_exists(collection_name: str) -> bool:
-    try:
-        chroma_client.get_collection(collection_name)
-        return True
-    except Exception:
-        return False
-
-def store_in_chromaDB(chunks: List[str], embeddings: List[List[float]], path: str, collection_name: str):
-    if not (isinstance(chunks, list) and isinstance(embeddings, list)):
-        raise TypeError("Both chunks and embeddings must be lists.")
-    if len(chunks) != len(embeddings):
-        raise ValueError(f"Length mismatch: {len(chunks)} chunks vs {len(embeddings)} embeddings.")
-    if not all(isinstance(e, list) for e in embeddings):
-        raise TypeError("Each embedding should be a list of floats (i.e., a vector).")
-
-    _client = chromadb.PersistentClient(path=path)
-    collection = _client.get_or_create_collection(name=collection_name)
-    collection.add(
-        documents=chunks,
-        embeddings=embeddings,
-        ids=[f"chunk-{i}" for i in range(len(chunks))]
-    )
-    return collection
-
-def get_or_create_embeddings(text: str, _embedding_model, collection_name: str):
-    chunks = create_chunks(text)
-    if collection_exists(collection_name):
-        collection = chroma_client.get_collection(collection_name)
-    else:
-        embeddings = _embedding_model.embed_documents(chunks)
-        collection = store_in_chromaDB(chunks, embeddings, CHROMA_PATH, collection_name)
-    return collection, chunks
-
-# -------------------- MSAL token (device flow fallback) --------------------
-
-def access_token_key(client_id: str, authority: str) -> str:
-    app_msal = msal.PublicClientApplication(client_id=client_id, authority=authority)
-    result = None
-
-    # Try silent
-    accounts = app_msal.get_accounts()
-    if accounts:
-        result = app_msal.acquire_token_silent(MSAL_SCOPES, account=accounts[0])
-
-    # Try interactive (only works if you actually have a UI)
-    if not result:
-        try:
-            result = app_msal.acquire_token_interactive(scopes=MSAL_SCOPES)
-        except Exception:
-            # Fallback to device code (server-friendly)
-            flow = app_msal.initiate_device_flow(scopes=MSAL_SCOPES)
-            if "user_code" not in flow:
-                raise RuntimeError("Failed to create device flow.")
-            # Log the code so you can complete auth out-of-band
-            print(f"[MSAL] To authorize, visit {flow['verification_uri']} and enter code: {flow['user_code']}")
-            result = app_msal.acquire_token_by_device_flow(flow)
-
-    if not result or "access_token" not in result:
-        raise RuntimeError(f"MSAL auth error: {result}")
-    return result["access_token"]
-
-# -------------------- OneDrive PDF helpers --------------------
-
-def prev_version(client_id: str, authority: str, file_path: str, version_number: int) -> str:
-    access_token = access_token_key(client_id=client_id, authority=authority)
-    headers = {"Authorization": f"Bearer {access_token}"}
-
-    versions_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/versions"
-    response = requests.get(versions_url, headers=headers)
-    if response.status_code != 200:
-        raise RuntimeError(f"Failed to fetch versions: {response.status_code} {response.text}")
-
-    versions = response.json().get("value", [])
-    if not versions:
-        raise RuntimeError("No versions found for this file.")
-
-    def _parse_dt(v):
-        ts = v.get("lastModifiedDateTime")
-        return datetime.fromisoformat(ts.replace("Z", "+00:00")) if ts else datetime.min
-
-    versions.sort(key=_parse_dt, reverse=True)
-    total = len(versions)
-    if not (1 <= int(version_number) <= total):
-        raise ValueError(f"Invalid version_number {version_number}. Only {total} versions exist.")
-
-    selected = versions[int(version_number) - 1]
-    internal_id = selected["id"]
-
-    download_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{file_path}:/versions/{internal_id}/content"
-    version_response = requests.get(download_url, headers=headers)
-    if version_response.status_code != 200:
-        raise RuntimeError(f"Failed to download version #{version_number}: {version_response.status_code} {version_response.text}")
-
-    pdf_bytes = version_response.content
-
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    all_text = ""
-    for page_num, page in enumerate(doc):
-        all_text += f"\n--- Page {page_num+1} ---\n{page.get_text()}"
-    return all_text
-
-
-# pip install pymupdf requests
-
-import fitz  # pymupdf
-import requests
-from io import BytesIO
-from urllib.parse import quote
-
+WHITEPAPER_NAME = "Load Prediction Whitepaper.pdf"
+VERSION_NUMBER =1 
 
 
 def read_white_paper_from_gcp(filename, base_url, version_number):
     # Safely encode filename for a URL
-
-    filename = "Load Prediction Whitepaper.pdf"
+    #filename = "Load Prediction Whitepaper.pdf"
     filename.split(".")
     encoded_filename = quote(filename.split(".")[0])
     file_type = filename.split(".")[1]
@@ -188,330 +66,1020 @@ def read_white_paper_from_gcp(filename, base_url, version_number):
     doc = fitz.open(stream=pdf_stream, filetype="pdf")
     text_block = ""
     # Iterate through pages
+    print(f"\n Extracting text from {len(doc)} pages of {filename}... \n")
     for page_num in range(len(doc)):
         page = doc[page_num]
         text = page.get_text("text")  # Extract as plain text
         text_block += f"--- Page {page_num + 1} ---\n{text}\n\n"
-        print(f"--- Page {page_num + 1} ---")
-        print(text)
+        # print(f"--- Page {page_num + 1} ---")
+        # print(text)
         # print()
     return text_block 
 
  
-
 def extract_from_pdf(whitepaper_name : str, base_url : str,version_number : int) -> str:
     return read_white_paper_from_gcp(whitepaper_name, base_url, version_number)
 
-# def extract_from_pdf(client_id: str, authority: str, file_path: str, version_number: int) -> str:
-#     return prev_version(client_id=client_id, authority=authority, file_path=file_path, version_number=version_number)
 
-# -------------------- GitHub helpers --------------------
+# ------------------Start Get 2 psuh ids from JSON file------------------
 
-def get_sha_pair_from_push_id(owner: str, repo: str, push_id: str) -> Tuple[Optional[str], Optional[str]]:
-    url = f"https://api.github.com/repos/{owner}/{repo}/events"
-    resp = requests.get(url)
-    if resp.status_code != 200:
-        raise RuntimeError(f"GitHub events fetch failed: {resp.status_code} {resp.text}")
-    events = resp.json()
-    for event in events:
-        if event.get("type") == "PushEvent" and event.get("id") == str(push_id):
-            before_sha = event["payload"]["before"]
-            head_sha = event["payload"]["head"]
-            return before_sha, head_sha
-    return None, None
-
-def fetch_latest_file_for_sha(owner: str, repo: str, notebook_file_path: str, sha_pairs: List[Tuple[str, str]]) -> dict:
-    for (sha_old, sha_new) in sha_pairs:
-        compare_url = f"https://api.github.com/repos/{owner}/{repo}/compare/{sha_old}...{sha_new}"
-        compare_resp = requests.get(compare_url)
-        if compare_resp.status_code != 200:
-            raise RuntimeError(f"GitHub compare failed: {compare_resp.status_code} {compare_resp.text}")
-        compare_data = compare_resp.json()
-
-        file_changed = any(f.get("filename") == notebook_file_path for f in compare_data.get("files", []))
-
-        if file_changed:
-            content_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{notebook_file_path}"
-            params = {"ref": sha_new}
-        else:
-            commits_url = f"https://api.github.com/repos/{owner}/{repo}/commits"
-            params = {"path": notebook_file_path, "per_page": 1}
-            commits_resp = requests.get(commits_url, params=params)
-            if commits_resp.status_code != 200:
-                raise RuntimeError(f"GitHub commits fetch failed: {commits_resp.status_code} {commits_resp.text}")
-            last_update_sha = commits_resp.json()[0]["sha"]
-            content_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{notebook_file_path}"
-            params = {"ref": last_update_sha}
-
-        file_resp = requests.get(content_url, params=params)
-        if file_resp.status_code != 200:
-            raise RuntimeError(f"GitHub content fetch failed: {file_resp.status_code} {file_resp.text}")
-
-        file_data = file_resp.json()
-        if "content" not in file_data:
-            raise RuntimeError("Notebook not found or could not fetch content. Details: " + str(file_data))
-        nb_json = base64.b64decode(file_data["content"]).decode("utf-8")
-        return json.loads(nb_json)
-
-    raise RuntimeError("No SHA pairs yielded a notebook.")
-
-def read_notebook_with_outputs(owner: str, repo: str, push_id: str, notebook_file_path: str) -> str:
-    sha_pair = get_sha_pair_from_push_id(owner=owner, repo=repo, push_id=push_id)
-    if not sha_pair or not sha_pair[0] or not sha_pair[1]:
-        raise RuntimeError(f"Push ID {push_id} not found in recent events.")
-    notebook_contents = fetch_latest_file_for_sha(owner=owner, repo=repo, notebook_file_path=notebook_file_path, sha_pairs=[sha_pair])
-
-    all_cells_text = ""
-    for i, cell in enumerate(notebook_contents.get('cells', [])):
-        if cell.get('cell_type') == 'code' and cell.get('outputs'):
-            all_cells_text += f"\nCell #{i+1}\n"
-            all_cells_text += "Code:\n"
-            all_cells_text += "".join(cell.get('source', [])).strip() + "\n"
-            all_cells_text += "Output(s):\n"
-            for output in cell['outputs']:
-                output_text = ""
-                if output.get('output_type') == 'stream':
-                    text = output.get('text', '')
-                    if isinstance(text, list):
-                        text = "".join(text)
-                    output_text += (text or "").strip()
-                elif output.get('output_type') in ['execute_result', 'display_data']:
-                    data = output.get('data', {})
-                    text = data.get('text/plain', '')
-                    if isinstance(text, list):
-                        text = "".join(text)
-                    output_text += (text or "").strip()
-                if output_text:
-                    all_cells_text += output_text + "\n"
-            all_cells_text += "-" * 30 + "\n"
-
-    return all_cells_text.strip()
-
-# -------------------- Embedding / querying helpers --------------------
-
-def create_chunks(text: str) -> List[str]:
-    splitter = RecursiveCharacterTextSplitter(chunk_size=750, chunk_overlap=100)
-    return splitter.split_text(text or "")
-
-def queryFun(query: str, _embedding_model, collection):
-    query_embedding = _embedding_model.embed_query(query)
-    results = collection.query(query_embeddings=[query_embedding], n_results=5)
-    return [doc for doc in results.get("documents", [[]])[0]]
-
-def queryFun_parallel(queries: List[str], _embedding_model, collection):
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(queryFun, q, _embedding_model, collection) for q in queries]
-        out = []
-        for fut in as_completed(futures):
-            out.append(fut.result())
-        # preserve input order (optional); current code returns as completed
-        return out
-
-# -------------------- LLM prompts --------------------
-
-context_list = [
-    "From the provided HTML or text, extract summary overview in 2 lines only, excluding all other sections or details.",
-    "Keep only features name. Do not include descriptions, preprocessing details, training methodology, target variable explanations, or any other text.",
-    "Include only the train/test percentages and their purposes if mentioned. Do not include hyperparameter tuning, validation strategy, retraining details, evaluation metrics, or deployment strategy.",
-    "Strictly Keep Model name only. exclude other details/information.",
-    "Extract only the validation/performance metrics with their scores and the best hyperparameter scores, excluding all other details.",
-    "Keep only ethical considerations. do not include other details."
-]
-
-def refine_extracted_elements_with_context(similar_elements, query_context, context_list_ele):
-    combined_elements = "\n\n".join(similar_elements)
-    prompt = [
-        SystemMessage(content="You are a product analyst."),
-        HumanMessage(content=f"""
-The following are the top 5 similar elements retrieved from a vector database and create a structured report in HTML format with the following three sections, using dangerouslySetInnerHTML={{ __html: reportMarkdown }}; html should not affect other elements: 
-{combined_elements}
-
-The original query context is:
-"{query_context}"
-- {context_list_ele}
-- Identify and extract only the most relevant elements or functionalities.
-- Do not recommend, only extract.
-- Avoid verbose explanations; focus on clarity and precision.
-- Provide concise, bullet-pointed outputs or insights based on retrieved data.
-""")
-    ]
-    
-    resp = llm.invoke(prompt)
-    return resp.content.strip()
-    # return llm(prompt).content.strip()
-
-def compare_functionalities(whitepaper_funcs, code_funcs):
-    prompt = [
-        SystemMessage(content="You are a AI report comparision tool."),
-        HumanMessage(content=f"""
-Whitepaper Functionalities:
-{whitepaper_funcs}
-
-Code Functionalities and create a structured report in HTML format with the following three sections, using dangerouslySetInnerHTML={{ __html: reportMarkdown }}; html should not affect other elements
-{code_funcs}
-
-Compare each functionality described in the white paper funcs with the corresponding code funcs implementation.
-If there is any mismatch highlight that with mismatch.
-
-eg: 
-White Paper:
-Code:
-Mismatch: 
-""")
-    ]
-    return llm(prompt).content.strip()
-
-def summarize(whitepaper_text):
-    prompt = [
-        SystemMessage(content="You are a product analyst."),
-        HumanMessage(content=f"""
-The HTML will be rendered in React via dangerouslySetInnerHTML={{ __html: reportMarkdown }} — ensure the markup is self-contained and does not affect other page elements:
-
-Create exactly three top-level sections with these subheadings, in this order: White paper, code, Mismatch.
-
-Stick strictly to the input content; do not add, remove, or invent information.
-{whitepaper_text}
-         
-Give brief objective of white paper at top. 
-Follow sequence: Summart, Model Overview, train_test_split, Preprocessing step, Feature selection and Handle Imbalance data, Model Architecture, Base Line Metrics and Fallback mechanism
-    Report Structure:
-    1. Summary: overall summry
-
-    2. Preprocesing steps: 
-        - Data splitting strategy train_test_split 
-        - Name of Features and select features, and display all features. Feature engineering steps
-
-    3. Handle Imbalance data: 
-        - Methods to hanlde imbalance data on both Code and white paper
-
-    4. Feature Selection:
-        - list down all featuress used in white paper and code.
-        - show Mismatch if there is any mismatch in fetures
-
-    5. Model Overview
-        - Extract and compare model information from the notebook and white paper ,Model architecture or Main model used for prediction.
-        - show Mismatch if there is any mismatch in Model Overview.
-
-    6. Validation Metrics
-        - Show all validation metrics and scores from both the white paper and the notebook/updated version.
-        - show mismatch if there is any mismatch in validation metrics.
-
-    7. Hyperparameter Configuration
-        - List hyperparameters used in the model(s) and respective scores.
-        - Mismatches id there is any otherwise there is no mismatch in code and white papaer.
-
-    8. Critical metrics:
-        - List critical metics if available.
-        -show mismatch if there is any mismatch in critical metrics.
-
-    9. Fallback mechanism
-        - List fall back mechanish present in white paper and code.
-        - Show Mismatch if there is any mismatch in Fallback mechanism.
-
-    10. Final Summary
-        - Clearly state whether the notebook and white paper are aligned.
-        - If not, include the note: "White paper is not aligned with the code. Please update the white paper accordingly."
-""")
-    ]
-
-    resp = llm.invoke(prompt)
-    return resp.content.strip()
-    # return llm(prompt).content.strip()
-
-QUERIES = [
-    "Summary/Objective of white paper ",
-    "Select All features/ Features Name ",
-    "Training and resting methodology",
-    "Preprocessing steps and data transformation steps",
-    "Model selected for classification",
-    "List of Hyper parameters and respective values",
-    "What are list of validation scores and the performance scores?",
-    "Ethical considerations"
-]
-
-# -------------------- Main orchestration --------------------
-
-def get_latest_push_id_from_file(path: str = "push_events.json") -> str:
+def get_first_two_push_ids(path: str = "push_events.json") -> list:
     if not os.path.exists(path):
         raise FileNotFoundError(f"{path} not found.")
-    df = pd.read_json(path)
-    # your code did: push_event[0].tolist()[0]
-    # replicate safely:
-    first_col = df.columns[0]
-    return str(df[first_col].tolist()[0])
+    
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+    results = []
+    
+    # If the JSON is a list of dicts
+    if isinstance(data, list):
+        for item in data[:2]:  # first two items
+            if isinstance(item, dict):
+                first_key = list(item.keys())[0]
+                results.append(str(item[first_key]))
+            else:
+                results.append(str(item))
+    
+    # If the JSON is a dict of lists
+    elif isinstance(data, dict):
+        first_key = next(iter(data))
+        results = [str(val) for val in data[first_key][:2]]
+    
+    else:
+        raise ValueError("Unsupported JSON structure.")
+    
+    return results
 
+#. -----------------End Get 2 Push Ids from Json File
+
+# --------------------Start Code Diff and base version from GitHub--------------------
+
+def _gh_get(url: str, params: Optional[dict] = None) -> dict:
+    r = requests.get(url, params=params, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"GitHub API error {r.status_code}: {r.text}")
+    return r.json()
+
+def get_push_event(owner: str, repo: str, push_id: str) -> Optional[dict]:
+    url = f"https://api.github.com/repos/{owner}/{repo}/events"
+    events = _gh_get(url)
+    for e in events:
+        if e.get("type") == "PushEvent" and str(e.get("id")) == str(push_id):
+            return e
+    return None
+
+def get_sha_pair_from_push_id(owner: str, repo: str, push_id: str) -> Tuple[Optional[str], Optional[str]]:
+    e = get_push_event(owner, repo, push_id)
+    if not e:
+        return None, None
+    return e["payload"]["before"], e["payload"]["head"]
+
+def list_commits_between(owner: str, repo: str, base_sha: str, head_sha: str) -> List[dict]:
+    """
+    Return commits (oldest..newest) between base..head via compare API.
+    """
+    url = f"https://api.github.com/repos/{owner}/{repo}/compare/{base_sha}...{head_sha}"
+    data = _gh_get(url)
+    return data.get("commits", [])
+
+def commit_touches_path(owner: str, repo: str, commit_sha: str, path: str) -> bool:
+    """
+    Inspect a single commit for files it touched.
+    """
+    url = f"https://api.github.com/repos/{owner}/{repo}/commits/{commit_sha}"
+    data = _gh_get(url)
+    for f in data.get("files", []) or []:
+        if f.get("filename") == path:
+            return True
+    return False
+
+def all_change_commits_in_push(owner: str, repo: str, push_before: str, push_head: str, path: str) -> List[dict]:
+    """
+    Within a push range, return the list of commit objects that changed 'path', oldest..newest.
+    Each item is the full commit dict from compare API ('commits' array).
+    """
+    commits = list_commits_between(owner, repo, push_before, push_head)
+    change_commits = []
+    for c in commits:
+        sha = c.get("sha")
+        if not sha:
+            continue
+        if commit_touches_path(owner, repo, sha, path):
+            change_commits.append(c)
+    return change_commits
+
+def latest_commit_for_path(owner: str, repo: str, path: str) -> Optional[str]:
+    url = f"https://api.github.com/repos/{owner}/{repo}/commits"
+    params = {"path": path, "per_page": 1}
+    commits = _gh_get(url, params=params)
+    if commits:
+        return commits[0]["sha"]
+    return None
+
+def get_file_content_at(owner: str, repo: str, path: str, ref: str) -> Optional[str]:
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+    try:
+        data = _gh_get(url, params={"ref": ref})
+    except RuntimeError:
+        return None
+    if "content" not in data:
+        return None
+    encoding = data.get("encoding", "base64")
+    if encoding != "base64":
+        raise RuntimeError(f"Unexpected encoding '{encoding}' for {path}@{ref}")
+    return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+
+
+def _clip(s: str, max_chars: int) -> str:
+    s = s if isinstance(s, str) else str(s)
+    return s if len(s) <= max_chars else s[:max_chars] + " …[truncated]"
+
+def _as_lines(s: str) -> list[str]:
+    return s.splitlines() if s else ["(empty)"]
+
+def normalize_for_diff(
+    text: str,
+    url_hint: str,
+    include_outputs: bool = False,
+    output_mode: str = "summary",
+    max_output_chars: int = 2000
+) -> List[str]:
+    # Try parse as .ipynb
+    nb = None
+    try:
+        maybe = json.loads(text)
+        if isinstance(maybe, dict) and "cells" in maybe:
+            nb = maybe
+    except Exception:
+        pass
+
+    if nb is None and not url_hint.endswith(".ipynb"):
+        return text.splitlines()
+
+    if nb is None:
+        return text.splitlines()
+
+    lines: list[str] = []
+    for i, cell in enumerate(nb.get("cells", []), start=1):
+        ctype = cell.get("cell_type", "unknown")
+        src_field = cell.get("source", [])
+        src = "".join(src_field) if isinstance(src_field, list) else (src_field or "")
+        exec_count = cell.get("execution_count", None)
+        header = f"### CELL {i} [{ctype}]" + (f" (exec_count={exec_count})" if exec_count is not None else "")
+        lines.append(header)
+
+        source_lines = src.splitlines() if src else ["(empty source)"]
+        lines.extend(source_lines)
+        lines.append("")
+
+        if include_outputs and cell.get("outputs"):
+            lines.append(">>> OUTPUTS")
+            for j, out in enumerate(cell["outputs"], start=1):
+                ot = out.get("output_type", "unknown")
+                if ot == "stream":
+                    s = _clip(out.get("text", ""), max_output_chars)
+                    lines.append(f"[{j}] stream:")
+                    lines.extend(_as_lines(s))
+                elif ot in ("execute_result", "display_data"):
+                    data = out.get("data", {})
+                    if "text/plain" in data:
+                        s = data["text/plain"]
+                        if isinstance(s, list):
+                            s = "".join(s)
+                        s = _clip(s, max_output_chars)
+                        lines.append(f"[{j}] {ot} text/plain:")
+                        lines.extend(_as_lines(s))
+                    else:
+                        keys = list(data.keys())
+                        summary_bits = []
+                        if "image/png" in keys:
+                            b64 = data["image/png"]
+                            if isinstance(b64, list):
+                                b64 = "".join(b64)
+                            digest = hashlib.sha1(b64.encode("utf-8")).hexdigest()[:10]
+                            summary_bits.append(f"image/png sha1={digest} len={len(b64)}")
+                        for k in keys:
+                            if k not in ("text/plain", "image/png"):
+                                summary_bits.append(k)
+                        lines.append(f"[{j}] {ot} ({', '.join(summary_bits) if summary_bits else 'non-text output'})")
+
+                        if output_mode == "full":
+                            try:
+                                safe_dump = {k: _clip(json.dumps(v) if not isinstance(v, str) else v, max_output_chars)
+                                             for k, v in data.items()}
+                                dumped = json.dumps(safe_dump, indent=2)
+                                lines.extend(dumped.splitlines())
+                            except Exception as e:
+                                lines.append(f"(could not dump rich output: {e})")
+                elif ot == "error":
+                    ename = out.get("ename", "")
+                    evalue = out.get("evalue", "")
+                    tb = "\n".join(out.get("traceback", []) or [])
+                    tb = _clip(tb, max_output_chars)
+                    lines.append(f"[{j}] error: {ename}: {evalue}")
+                    lines.extend(_as_lines(tb))
+                else:
+                    lines.append(f"[{j}] {ot} (unrecognized output_type)")
+            lines.append("<<< END OUTPUTS")
+            lines.append("")
+    return lines
+
+def make_unified_diff(old_text: str, new_text: str, hint: str) -> str:
+    old_lines = normalize_for_diff(old_text, hint, include_outputs=True, output_mode="full", max_output_chars=4000)
+    new_lines = normalize_for_diff(new_text, hint, include_outputs=True, output_mode="full", max_output_chars=4000)
+    diff = difflib.unified_diff(
+        old_lines, new_lines,
+        fromfile="BASELINE_VERSION",
+        tofile="UPDATED_VERSION",
+        lineterm=""
+    )
+    return "\n".join(diff) or "No differences found."
+
+
+def cumulative_push_diff(
+    owner: str,
+    repo: str,
+    notebook_file_path: str,
+    push_event: dict
+) -> Optional[Dict]:
+    """
+    Return baseline + updated versions (in-memory, no disk save).
+    """
+    before_sha = push_event["payload"]["before"]
+    head_sha   = push_event["payload"]["head"]
+
+    changed = all_change_commits_in_push(owner, repo, before_sha, head_sha, notebook_file_path)
+    if not changed:
+        return None
+
+    first_change = changed[0]
+    last_change  = changed[-1]
+
+    base_parent_sha = first_change["parents"][0]["sha"] if first_change.get("parents") else before_sha
+    updated_sha     = last_change["sha"]
+
+    baseline_content = get_file_content_at(owner, repo, notebook_file_path, base_parent_sha)
+    updated_content  = get_file_content_at(owner, repo, notebook_file_path, updated_sha)
+
+    if baseline_content is None or updated_content is None:
+        raise RuntimeError(f"Could not fetch contents at {base_parent_sha} or {updated_sha}")
+
+    diff = make_unified_diff(baseline_content, updated_content, notebook_file_path)
+
+
+    old_norn_code = normalize_for_diff(baseline_content, notebook_file_path, include_outputs=True, output_mode="full", max_output_chars=4000)
+    new_norm_code = normalize_for_diff(updated_content, notebook_file_path, include_outputs=True, output_mode="full", max_output_chars=4000)
+    
+
+    old_norn_code = "\n".join(old_norn_code) or "No differences found."
+    new_norm_code =  "\n".join(new_norm_code) or "No differences found."
+
+    
+    return {
+        "changed": True,
+        "baseline_sha": base_parent_sha,
+        "updated_sha": updated_sha,
+        "baseline_content": old_norn_code,  # ← previous version text
+        "updated_content": new_norm_code,    # ← latest version text
+        "diff": diff
+    }
+
+
+def analyze_two_pushes(
+    owner: str,
+    repo: str,
+    notebook_file_path: str,
+    push_id_1: str,
+    push_id_2: str
+) -> Dict:
+    """
+    Priority rule for multiple changes:
+      1) Prefer cumulative changes within Push 1 (if any).
+      2) Else, prefer cumulative changes within Push 2 (if any).
+      3) Else, unchanged across both pushes -> return latest prior version.
+    """
+    e1 = get_push_event(owner, repo, push_id_1)
+    e2 = get_push_event(owner, repo, push_id_2)
+    if not e1 or not e2:
+        raise RuntimeError("One or both push IDs were not found in recent events.")
+
+    # 1) Try Push 1 first (PRIORITY)
+    res1 = cumulative_push_diff(owner, repo, notebook_file_path, e1)
+    if res1:
+        return {
+            "status": "changed",
+            "priority_push_id": str(e1["id"]),
+            "message": "Changes detected. Showing cumulative diff within Push 1 (baseline -> most updated change in Push 1).",
+            **res1
+        }
+
+    # 2) If Push 1 had no change, try Push 2
+    res2 = cumulative_push_diff(owner, repo, notebook_file_path, e2)
+    if res2:
+        return {
+            "status": "changed",
+            "priority_push_id": str(e2["id"]),
+            "message": "No change in Push 1; showing cumulative diff within Push 2 (baseline -> most updated change in Push 2).",
+            **res2
+        }
+
+    # 3) Neither push changed the file -> provide latest prior version
+    last_touch_sha = latest_commit_for_path(owner, repo, notebook_file_path)
+    if not last_touch_sha:
+        return {
+            "status": "unchanged_no_prior",
+            "message": "No changes across the two pushes and no prior commit found that touched the file."
+        }
+
+    prior_text = get_file_content_at(owner, repo, notebook_file_path, last_touch_sha)
+    if prior_text is None:
+        return {
+            "status": "unchanged_no_prior_content",
+            "last_touch_sha": last_touch_sha,
+            "message": "No changes across the two pushes; prior commit found but content could not be retrieved."
+        }
+
+    return {
+        "status": "unchanged",
+        "last_touch_sha": last_touch_sha,
+        "message": "No changes between those two pushes; returning the latest prior version of the file.",
+        "prior_version_excerpt": prior_text[:1500] + ("…[truncated]" if len(prior_text) > 1500 else "")
+    }
+
+# -------------------End Code Diff and base version from Github--------------------
+
+
+# ------------------ Srart White paper comparision with code 
+
+# -------------------- Config --------------------
+SECTION_QUERIES: Dict[str, List[str]] = {
+    # Used for Summary:
+    "Executive Summary": ["executive summary", "overview", "objective", "goal"],
+
+    # Kept sections:
+    "Data Description": ["features", "dataset", "data description", "columns", "shape", "dimension"],
+    "Preprocessing": [
+        "preprocessing", "missing values", "imputation", "encoding",
+        "scaling", "standardization", "normalization",
+        "balancing", "smote", "undersampling", "oversampling",
+        "one-hot", "label encoding", "feature engineering"
+    ],
+    "Model Architecture": [
+        "final model", "algorithm", "logistic regression", "random forest", "xgboost", "svm",
+        "model selection", "best params", "hyperparameters", "business justification"
+    ],
+    "Training Methodology": ["train test split", "validation", "k-fold", "grid search", "cross-validation", "threshold"],
+    "Evaluation Metrics": [
+        "metrics", "accuracy", "precision", "recall", "f1", "pr-auc", "roc-auc", "specificity",
+        "best model", "evaluation", "validation score", "test score"
+    ],
+    "Model Monitoring & Drift": [
+        "monitoring", "data drift", "concept drift", "alerts", "thresholds", "retraining",
+        "performance monitoring", "population stability index", "PSI", "alerting", "dashboards"
+    ],
+    "Fallback / Human-in-the-Loop": [
+        "fallback", "human-in-the-loop", "override", "escalation", "manual review",
+        "confidence threshold", "confidence score", "policy exception"
+    ],
+    "Stress Conditions / Scenario Analysis": [
+        "stress", "scenario", "crisis", "worst case", "edge case", "macroeconomic",
+        "adverse", "shock", "sensitivity analysis"
+    ],
+
+    # Excluded but used for WP-only addenda:
+    "Introduction": ["introduction", "background", "context"],
+    "Related Work / Literature Review": ["related work", "literature", "prior work"],
+    "Deployment Strategy": ["deployment", "serving", "api", "scalability", "latency", "throughput"],
+    "Future Work": ["future work", "next steps", "roadmap"],
+}
+
+# Metrics to consider for Phase 2
+METRIC_PATTERNS = {
+    "Accuracy": r"\baccuracy\b",
+    "Precision": r"\bprecision\b|\bppv\b",
+    "Recall": r"\brecall\b|\bsensitivity\b|\btpr\b",
+    "F1-Score": r"\bf1(?:[-\s]?score)?\b",
+    "PR-AUC": r"\bpr-?auc\b|\bprecision[-\s]?recall\s*auc\b|\baverage\s*precision\b|\bAP\b",
+    "ROC-AUC": r"\broc-?auc\b|\bauc\b(?!\s*pr)",
+    "Specificity": r"\bspecificity\b|\btnr\b",
+}
+VALUE_PATTERN = r"(?:(?:~|≈|=)?\s*)(\d+(?:\.\d+)?)(\s*%)?"
+
+# Phase 1 sections to show (order matters)
+PHASE1_SECTIONS = [
+    "Summary",  # maps to Executive Summary (WP-only in bullets)
+    "Data Description",
+    "Preprocessing",
+    "Model Architecture",
+    "Evaluation Details & Metrics",  # merges Training Methodology + Evaluation Metrics
+    "Model Monitoring & Drift",
+    "Fallback / Human-in-the-Loop",
+    "Stress Conditions / Scenario Analysis",
+    "White Paper — Additional Details Not Captured Above",  # WP addenda section
+]
+
+# Map Phase 1 synthetic section names to underlying retrieval sections
+SECTION_ALIASES: Dict[str, List[str]] = {
+    "Summary": ["Executive Summary"],
+    "Evaluation Details & Metrics": ["Training Methodology", "Evaluation Metrics"],
+    # others are 1:1 and use their own name
+}
+
+# Excluded sections that we still mine for WP addenda
+EXCLUDED_SECTIONS_FOR_WP_ADDENDA = [
+    "Introduction", "Related Work / Literature Review", "Deployment Strategy", "Future Work"
+]
+
+
+# -------------------- Data types --------------------
+@dataclass
+class FilteredItem:
+    section: str
+    source: str  # "White Paper" | "Code Diff" | "Code v1"
+    text: str
+    score: float
+
+
+# -------------------- Chunkers (simple) --------------------
+def _simple_paragraphs(text: str) -> List[str]:
+    return [p.strip() for p in re.split(r"\n\s*\n", text or "") if p.strip()]
+
+def chunk_whitepaper(text: str) -> List[str]:
+    chunks: List[str] = []
+    for m in re.finditer(r"```json\s*(.*?)```", text or "", flags=re.DOTALL | re.IGNORECASE):
+        chunks.extend(_simple_paragraphs(m.group(1)))
+    if not chunks:
+        chunks = _simple_paragraphs(text)
+    return chunks
+
+def chunk_code_diff(text: str) -> List[str]:
+    # split on list bullets and blank lines to capture atomic statements from diffs
+    blocks = [b.strip() for b in re.split(r"(?m)^\s*[-*•]\s+|\n\s*\n", text or "") if b.strip()]
+    return blocks or _simple_paragraphs(text)
+
+def chunk_old_code(text: str) -> List[str]:
+    try:
+        nb = json.loads(text or "")
+        if isinstance(nb, dict) and "cells" in nb:
+            out = []
+            for c in nb.get("cells", []):
+                src = c.get("source", [])
+                if isinstance(src, list):
+                    src = "".join(src)
+                if src and src.strip():
+                    out.append(src.strip())
+            return out or _simple_paragraphs(text)
+    except Exception:
+        pass
+    return _simple_paragraphs(text)
+
+
+# -------------------- Retrieval --------------------
+def top_k_snippets_for_query(chunks: List[str], query: str, k: int = 3) -> List[Tuple[str, float]]:
+    if not chunks:
+        return []
+    vec = TfidfVectorizer(ngram_range=(1, 2), stop_words="english")
+    X = vec.fit_transform(chunks)
+    sims = cosine_similarity(vec.transform([query]), X).ravel()
+    order = sims.argsort()[::-1]
+    return [(chunks[i], float(sims[i])) for i in order[:k] if sims[i] > 0]
+
+def retrieve_filtered_context(whitepaper: str, code_diff: str, old_code: str, k_per_source: int = 3) -> List[FilteredItem]:
+    wp_chunks = chunk_whitepaper(whitepaper)
+    v2_chunks = chunk_code_diff(code_diff)
+    v1_chunks = chunk_old_code(old_code)
+
+    items: List[FilteredItem] = []
+    for section, queries in SECTION_QUERIES.items():
+        query = " ".join([section] + queries)
+        for txt, sc in top_k_snippets_for_query(wp_chunks, query, k=k_per_source):
+            items.append(FilteredItem(section, "White Paper", txt, sc))
+        for txt, sc in top_k_snippets_for_query(v2_chunks, query, k=k_per_source):
+            # tag as Code Diff (not "Code v2")
+            items.append(FilteredItem(section, "Code Diff", txt, sc))
+        for txt, sc in top_k_snippets_for_query(v1_chunks, query, k=k_per_source):
+            items.append(FilteredItem(section, "Code v1", txt, sc))
+
+    items.sort(key=lambda x: (x.section, -x.score))
+    return items
+
+
+# -------------------- Metrics & WP extractors --------------------
+def _as_pct(val: float) -> float:
+    return val * 100.0 if val <= 1.0 else val
+
+def extract_metrics(text: str) -> Dict[str, float]:
+    out: Dict[str, float] = {}
+    low = (text or "").lower()
+    for name, patt in METRIC_PATTERNS.items():
+        for m in re.finditer(patt, low):
+            window = low[m.end(): m.end() + 200]
+            vm = re.search(VALUE_PATTERN, window)
+            if vm:
+                try:
+                    out.setdefault(name, _as_pct(float(vm.group(1))))
+                    break
+                except ValueError:
+                    pass
+    return out
+
+def pct_str(x: Optional[float]) -> str:
+    return f"{x:.1f}%" if isinstance(x, (int, float)) else "N/A"
+
+# --- NEW: extract preprocessing steps explicitly mentioned in WP ---
+_PREPROC_CANON = [
+    ("Missing value imputation", r"missing|imput"),
+    ("One-hot / label encoding", r"one[-\s]?hot|label\s+encod"),
+    ("Scaling / standardization", r"scal|standardiz|normaliz"),
+    ("Class balancing (SMOTE/over/under)", r"smote|over-?sampl|under-?sampl|class\s+imbalance|balanc"),
+    ("Feature engineering", r"feature\s+engineer|derive|transform"),
+    ("Data type consistency / cleaning", r"dtype|data\s+type|cleaning|sanitize"),
+]
+
+def extract_preprocessing_steps_wp(wp_text: str) -> List[str]:
+    low = (wp_text or "").lower()
+    steps = []
+    for label, patt in _PREPROC_CANON:
+        if re.search(patt, low):
+            steps.append(label)
+    return steps
+
+# --- NEW: extract final model name + hyperparameters from WP ---
+_MODEL_PATTERNS = [
+    ("Logistic Regression", r"logistic\s+regress"),
+    ("Random Forest", r"random\s+forest"),
+    ("XGBoost", r"xgboost|xgb"),
+    ("SVM", r"\bsvm\b|support\s+vector"),
+    ("Decision Tree", r"decision\s+tree"),
+]
+
+_HYPER_PATTERNS = [
+    ("C", r"\bC\s*[:=]\s*([0-9]*\.?[0-9]+)"),
+    ("max_iter", r"\bmax[_\s-]?iter\s*[:=]\s*(\d+)"),
+    ("penalty", r"\bpenalty\s*[:=]\s*['\"]?([a-z0-9_-]+)['\"]?"),
+    ("solver", r"\bsolver\s*[:=]\s*['\"]?([a-z0-9_-]+)['\"]?"),
+    ("n_estimators", r"\bn[_\s-]?estimators\s*[:=]\s*(\d+)"),
+    ("max_depth", r"\bmax[_\s-]?depth\s*[:=]\s*(\d+|None)"),
+    ("min_samples_split", r"\bmin[_\s-]?samples[_\s-]?split\s*[:=]\s*(\d+)"),
+    ("min_samples_leaf", r"\bmin[_\s-]?samples[_\s-]?leaf\s*[:=]\s*(\d+)"),
+    ("criterion", r"\bcriterion\s*[:=]\s*['\"]?([a-z0-9_-]+)['\"]?"),
+    ("learning_rate", r"\blearning[_\s-]?rate\s*[:=]\s*([0-9]*\.?[0-9]+)"),
+]
+
+def extract_model_from_wp(wp_text: str) -> Tuple[Optional[str], Dict[str, str]]:
+    low = (wp_text or "").lower()
+    model_name = None
+    for name, patt in _MODEL_PATTERNS:
+        if re.search(patt, low):
+            model_name = name
+            break
+    params: Dict[str, str] = {}
+    # scan the full text once for each param
+    for key, patt in _HYPER_PATTERNS:
+        m = re.search(patt, wp_text)
+        if m:
+            params[key] = m.group(1)
+    return model_name, params
+
+# -------------------- Builders --------------------
+def _group_by_section(items: List[FilteredItem]) -> Dict[str, List[FilteredItem]]:
+    g = defaultdict(list)
+    for it in items:
+        g[it.section].append(it)
+    return g
+
+def _collect_items_for_phase_section(g: Dict[str, List[FilteredItem]], phase_section: str) -> List[FilteredItem]:
+    """Maps synthetic Phase 1 section names to underlying retrieval sections."""
+    bases = SECTION_ALIASES.get(phase_section, [phase_section])
+    out: List[FilteredItem] = []
+    for base in bases:
+        out.extend(g.get(base, []))
+    # sort by score desc
+    return sorted(out, key=lambda x: -x.score)
+
+def _bullets_grouped_by_source(section_items: List[FilteredItem], bullets_per_source: int, summary_wp_only: bool=False) -> List[str]:
+    """
+    Return bullets grouped under [WP], [Code Diff], [Code-v1].
+    If summary_wp_only is True, only include [WP] bullets regardless of other sources.
+    """
+    lines: List[str] = []
+    by_src = defaultdict(list)
+    for it in section_items:
+        by_src[it.source].append(it)
+
+    # Order: WP, Code Diff, Code v1
+    ordered_sources = ("White Paper", "Code Diff", "Code v1")
+    for src in ordered_sources:
+        if summary_wp_only and src != "White Paper":
+            continue
+        if src in by_src:
+            tag = "[WP]" if src == "White Paper" else ("[Code Diff]" if src == "Code Diff" else "[Code-v1]")
+            topn = sorted(by_src[src], key=lambda x: -x.score)[:bullets_per_source]
+            for t in topn:
+                snippet = " ".join(t.text.split())
+                snippet = snippet[:600] + " …" if len(snippet) > 600 else snippet
+                lines.append(f"- {tag} {snippet}")
+    return lines
+
+def _format_metrics_line(metrics: Dict[str, float]) -> Optional[str]:
+    if not metrics:
+        return None
+    ordered = ["Accuracy", "Precision", "Recall", "F1-Score", "PR-AUC", "ROC-AUC", "Specificity"]
+    parts = []
+    for m in ordered:
+        if m in metrics:
+            parts.append(f"{m}={metrics[m]:.1f}%")
+    return ", ".join(parts) if parts else None
+
+def build_phase1_summary(
+    items: List[FilteredItem],
+    bullets_per_source: int = 2,
+    wp_metrics: Optional[Dict[str, float]] = None,
+    code_metrics: Optional[Dict[str, float]] = None,
+    v1_metrics: Optional[Dict[str, float]] = None,
+    wp_text_for_inference: str = "",
+) -> str:
+    """
+    Phase 1 section builder with:
+      - Summary: WP-only bullets.
+      - Preprocessing: prepend explicit WP-derived checklist if present.
+      - Model Architecture: prepend explicit WP-derived model + hyperparameters (and scores).
+      - Evaluation Details & Metrics: inject explicit WP metrics line at top.
+    """
+    g = _group_by_section(items)
+    lines = ["# PHASE 1 — Business-Focused Summary (Kept Sections Only)"]
+    for section in PHASE1_SECTIONS:
+        if section == "White Paper — Additional Details Not Captured Above":
+            # WP addenda from excluded sections
+            addenda_items: List[FilteredItem] = []
+            for ex_sec in EXCLUDED_SECTIONS_FOR_WP_ADDENDA:
+                addenda_items.extend(g.get(ex_sec, []))
+            addenda_items = [it for it in addenda_items if it.source == "White Paper"]
+            if not addenda_items:
+                continue
+            lines.append(f"\n## {section}")
+            # Up to 8 extra WP-only points
+            for it in sorted(addenda_items, key=lambda x: -x.score)[:8]:
+                snip = " ".join(it.text.split())
+                snip = snip[:700] + " …" if len(snip) > 700 else snip
+                lines.append(f"- [WP] {snip}")
+            continue
+
+        section_items = _collect_items_for_phase_section(g, section)
+        # If completely empty section, skip
+        if not section_items and section not in ("Preprocessing", "Model Architecture", "Evaluation Details & Metrics", "Summary"):
+            continue
+
+        # Section header
+        lines.append(f"\n## {section}")
+
+        # Summary: WP-only bullets (as pointers)
+        if section == "Summary":
+            if section_items:
+                lines.extend(_bullets_grouped_by_source(section_items, bullets_per_source, summary_wp_only=True))
+            continue
+
+        # Preprocessing: prepend inferred WP checklist if present
+        if section == "Preprocessing":
+            inferred_steps = extract_preprocessing_steps_wp(wp_text_for_inference)
+            if inferred_steps:
+                lines.append("- [WP] **Preprocessing steps (explicit in White Paper):** " + "; ".join(inferred_steps))
+            # then normal grouped bullets
+            if section_items:
+                lines.extend(_bullets_grouped_by_source(section_items, bullets_per_source))
+            continue
+
+        # Model Architecture: prepend model name + hyperparameters from WP
+        if section == "Model Architecture":
+            model_name, params = extract_model_from_wp(wp_text_for_inference)
+            wp_scores_line = _format_metrics_line(wp_metrics or {})
+            if model_name or params or wp_scores_line:
+                parts = []
+                if model_name:
+                    parts.append(f"Final model: **{model_name}**")
+                if params:
+                    hp = ", ".join([f"{k}={v}" for k, v in params.items()])
+                    parts.append(f"Hyperparameters: {hp}")
+                if wp_scores_line:
+                    parts.append(f"WP Scores: {wp_scores_line}")
+                lines.append("- [WP] " + " | ".join(parts))
+            else:
+                lines.append("- [WP] **Final model not explicitly named in WP.** Please confirm model choice and provide business justification for its selection.")
+            # then normal grouped bullets
+            if section_items:
+                lines.extend(_bullets_grouped_by_source(section_items, bullets_per_source))
+            continue
+
+        # Evaluation Details & Metrics: inject WP metrics line first (if available)
+        if section == "Evaluation Details & Metrics":
+            wp_line = _format_metrics_line(wp_metrics or {})
+            if wp_line:
+                lines.append(f"- [WP] Scores — {wp_line}")
+            if section_items:
+                lines.extend(_bullets_grouped_by_source(section_items, bullets_per_source))
+            continue
+
+        # All other sections: grouped bullets (WP, Code Diff, Code-v1)
+        if section_items:
+            lines.extend(_bullets_grouped_by_source(section_items, bullets_per_source))
+
+    return "\n".join(lines).strip()
+
+def build_phase2(whitepaper: str, code_diff: str, old_code: str) -> Tuple[str, str, str]:
+    """
+    Build table + highlights + notes.
+    RULE: Exclude any metric that is missing in BOTH WP and Code (Diff/v1).
+    Column label: 'Code Diff Score'.
+    """
+    wp = extract_metrics(whitepaper)
+    v2 = extract_metrics(code_diff)
+    v1 = extract_metrics(old_code)
+    code: Dict[str, Optional[float]] = {k: v2.get(k, v1.get(k)) for k in METRIC_PATTERNS.keys()}
+
+    rows, improvements, regressions = [], [], []
+
+    for m in METRIC_PATTERNS.keys():
+        wv, cv = wp.get(m), code.get(m)
+
+        # Skip if missing in BOTH
+        if wv is None and cv is None:
+            continue
+
+        ws, cs = pct_str(wv), pct_str(cv)
+        if wv is None or cv is None:
+            delta, finding = "N/A", "Missing in one source"
+        else:
+            d = cv - wv
+            delta = f"{'+' if d>=0 else ''}{d:.1f} pp"
+            if abs(d) < 0.05:
+                finding = "Aligned"
+            elif d > 0:
+                finding = "Improved"
+                if d >= 1.0: improvements.append(f"{m}: {delta}")
+            else:
+                finding = "Regressed"
+                if -d >= 1.0: regressions.append(f"{m}: {delta}")
+
+        rows.append((m, ws, cs, delta, finding))
+
+    # Build table
+    table = [
+        "# PHASE 2 — Critical Metrics Comparison (Reported Only)",
+        "",
+        "| Metric | White Paper Score | Code Diff Score | Delta (Code - WP) | Finding |",
+        "|--------|-------------------|-----------------|-------------------|---------|",
+    ] + [f"| {m} | {ws} | {cs} | {d} | {f} |" for m, ws, cs, d, f in rows]
+
+    # Highlights
+    highlights = ["\n## Highlights"]
+    if improvements:
+        highlights.append("- **Top Improvements**")
+        highlights += [f"  - {x}" for x in improvements]
+    if regressions:
+        highlights.append("- **Regressions**")
+        highlights += [f"  - {x}" for x in regressions]
+
+    # Notes
+    notes = [
+        "\n## Notes",
+        "- Metrics are shown only if present in at least one source (WP or Code Diff/Code v1).",
+        "- Code metrics prefer Code Diff. If absent, they fall back to Code v1.",
+        "- Metric parsing is regex-based; ensure metric names sit close to numeric values.",
+        "- All scores shown as percentages with 1 decimal.",
+        "- If an out-of-range value appears (e.g., >100%), treat it as a parsing artifact and verify manually.",
+    ]
+    return "\n".join(table), "\n".join(highlights), "\n".join(notes)
+
+def build_prompt(
+    items: List[FilteredItem],
+    table: str,
+    highlights: str,
+    notes: str,
+    prompt_context: str = "Loan Approval Model: Comprehensive Summary & Comparison for Business Stakeholders"
+) -> str:
+    """
+    Final prompt with explicit business-facing instructions.
+
+    Sections to include (in order):
+      1) Summary — executive overview for stakeholders (WP-only).
+      2) Data Description.
+      3) Preprocessing — LIST ALL steps discovered (imputation, encoding, scaling, balancing, feature engineering, etc.).
+      4) Model Architecture — STATE the FINAL model; KEEP hyperparameters & scores from the White Paper if present.
+         Otherwise, explicitly ASK stakeholders for the business justification.
+      5) Evaluation Details & Metrics — include BOTH the evaluation approach and the MAIN metrics/scores
+         for the FINAL model, with an explicit White Paper scores line first when available.
+      6) Model Monitoring & Drift — detailed guidance (what to track, thresholds, cadence, alerting, retraining triggers).
+      7) Fallback / Human-in-the-Loop — criteria/thresholds for fallback and WHEN to route to human review (critical conditions).
+      8) Stress Conditions / Scenario Analysis — scenarios and mitigation strategies.
+      9) White Paper — Additional Details Not Captured Above — bullet remaining WP-only details from Intro/Related/Deployment/Future Work.
+
+    Formatting rules:
+      - For each kept section, present bullets grouped by source tag: [WP], [Code Diff], [Code-v1].
+      - For Summary: show [WP] bullets ONLY.
+      - Use short bullets; no raw code blocks or “### CELL” headers.
+      - Keep a plain-language, outcome-oriented tone (business stakeholders).
+    """
+    g = _group_by_section(items)
+
+    def _grouped(section_name: str, limit_per_src: int = 6, summary_wp_only: bool=False) -> List[str]:
+        section_items = _collect_items_for_phase_section(g, section_name)
+        return _bullets_grouped_by_source(section_items, bullets_per_source=limit_per_src, summary_wp_only=summary_wp_only)
+
+    out: List[str] = [
+        f"### Prompt Context: {prompt_context}",
+        "Audience: business stakeholders and non-technical leaders.",
+        "Style: concise, outcome-oriented, plain language; highlight business impact, risk, compliance, and operations.",
+        "Sources: [WP]=White Paper, [Code Diff]=Code diff (latest changes), [Code-v1]=Older code/notebook.",
+        "\n=== FILTERED CONTEXT BY SECTION (Kept Only) ===",
+    ]
+
+    # Ordered sections per PHASE1_SECTIONS
+    for sec in PHASE1_SECTIONS:
+        if sec == "White Paper — Additional Details Not Captured Above":
+            addenda_items: List[FilteredItem] = []
+            for ex_sec in EXCLUDED_SECTIONS_FOR_WP_ADDENDA:
+                addenda_items.extend(g.get(ex_sec, []))
+            addenda_items = [it for it in addenda_items if it.source == "White Paper"]
+            if addenda_items:
+                out.append(f"\n## {sec}")
+                for it in sorted(addenda_items, key=lambda x: -x.score)[:8]:
+                    snip = " ".join(it.text.split())
+                    snip = snip[:700] + " …" if len(snip) > 700 else snip
+                    out.append(f"- [WP] {snip}")
+            continue
+
+        if sec == "Summary":
+            bullets = _grouped(sec, limit_per_src=6, summary_wp_only=True)
+        else:
+            bullets = _grouped(sec, limit_per_src=6, summary_wp_only=False)
+
+        if bullets:
+            out.append(f"\n## {sec}")
+            out.extend(bullets)
+
+    out += [
+        "\n=== METRICS COMPARISON (Reported Only) ===",
+        table,
+        highlights,
+        notes,
+        "\nInstruction: Produce Phase 1 using ONLY the filtered context above and the formatting rules; "
+        "then append Phase 2 exactly as provided (table + highlights + notes).",
+    ]
+    return "\n".join(out).strip()
+
+# -------------------- Public runner (use your variables here) --------------------
+def run_pipeline_from_vars(
+    wp_text: str,
+    diff_text: str,
+    v1_text: str,
+    k_per_source: int = 3,
+    bullets_per_source: int = 2,
+    prompt_context: str = "Loan Approval Model: Comprehensive Summary & Comparison for Business Stakeholders",
+):
+    # Retrieve items
+    items = retrieve_filtered_context(wp_text, diff_text, v1_text, k_per_source=k_per_source)
+
+    # Extract metrics (for injecting WP scores into Phase 1 evaluation & model arch sections)
+    wp_metrics = extract_metrics(wp_text)
+    code_metrics = extract_metrics(diff_text)
+    v1_metrics = extract_metrics(v1_text)
+
+    # Build Phase 1 with injections + WP inference (preprocessing/model)
+    phase1 = build_phase1_summary(
+        items,
+        bullets_per_source=bullets_per_source,
+        wp_metrics=wp_metrics,
+        code_metrics=code_metrics,
+        v1_metrics=v1_metrics,
+        wp_text_for_inference=wp_text,
+    )
+
+    # Build Phase 2 (filtered)
+    table, highlights, notes = build_phase2(wp_text, diff_text, v1_text)
+
+    # Build prompt
+    prompt = build_prompt(items, table, highlights, notes, prompt_context=prompt_context)
+
+    return {
+        "phase1_summary": phase1,
+        "phase2_table": table,
+        "phase2_highlights": highlights,
+        "phase2_notes": notes,
+        "final_prompt": prompt,
+        "filtered_items": items,
+    }
+
+
+def build_html_report_via_llm(output: dict, llm) -> str:
+    """
+    Use the LangChain ChatOpenAI `llm` to format pipeline results into one
+    self-contained HTML snippet, safe for dangerouslySetInnerHTML.
+    """
+    sys_msg = (
+        "You output ONLY a single HTML document. No explanations, no markdown, no backticks. "
+        "Requirements:\n"
+        "1) Wrap everything in <div id='loan-approval-report'> ... </div>.\n"
+        "2) Include a <style> tag whose CSS selectors are ALL prefixed with #loan-approval-report.\n"
+        "3) Do NOT include <script> tags, external fonts, or global/unprefixed CSS.\n"
+        "4) Convert markdown tables/lists into proper HTML.\n"
+        "5) Keep order and headings exactly as provided.\n"
+    )
+
+    human_msg = f"""
+    Render the following sections to HTML in exactly this order:
+
+    SECTION 1 TITLE: PHASE 1 — Business-Focused Summary (Kept Sections Only)
+    {output.get("phase1_summary","")}
+
+    SECTION 2 TITLE: PHASE 2 — Critical Metrics Comparison (Reported Only)
+    {output.get("phase2_table","")}
+
+    SECTION 3 TITLE: Highlights
+    {output.get("phase2_highlights","")}
+
+    SECTION 4 TITLE: Notes
+    {output.get("phase2_notes","")}
+
+    SECTION 5 TITLE: Final Prompt (for LLM)
+    {output.get("final_prompt","")}
+    """
+
+    resp = llm.invoke([
+        SystemMessage(content=sys_msg),
+        HumanMessage(content=human_msg),
+    ])
+    return resp.content
+
+
+# -----------------End of white paper comparision with code --------------------
 
 def main(whitepaper_name: str, version_number: int) -> str:
     try:
         base_url = "https://storage.googleapis.com/whitepaper_test/"
         # 1) Whitepaper text via OneDrive version
         whitepaper_text = extract_from_pdf(whitepaper_name, base_url, version_number)
-        whitepaper_hash = get_string_hash(whitepaper_text)
-        collection_wp, _ = get_or_create_embeddings(
-            text=whitepaper_text,
-            _embedding_model=embedding_model,
-            collection_name=f"whitepaper_{whitepaper_hash}"
-        )
+        first_two = get_first_two_push_ids("push_events.json")
+        print("First two push IDs:", first_two)
+        first_push_id = first_two[1]
+        second_push_id = first_two[0]
 
+        push_id_1 = first_push_id  
+        push_id_2 = second_push_id  
 
-        # # 1) Whitepaper text via OneDrive version
-        # file_path = f"Documents/GitHub/code-validator/{whitepaper_name}"
-        # whitepaper_text = extract_from_pdf(file_path)
-        # whitepaper_hash = get_string_hash(whitepaper_text)
-        # collection_wp, _ = get_or_create_embeddings(
-        #     text=whitepaper_text,
-        #     _embedding_model=embedding_model,
-        #     collection_name=f"whitepaper_{whitepaper_hash}"
-        # )
+        result = analyze_two_pushes(
+            owner=GITHUB_OWNER,
+            repo=GITHUB_REPO,
+            notebook_file_path= NOTEBOOK_FILE_PATH,
+            push_id_1=push_id_1,
+            push_id_2=push_id_2
+         )     
 
-        # 2) Query & refine for whitepaper
-        list_pdf_docs = queryFun_parallel(QUERIES, embedding_model, collection_wp)
-        with ThreadPoolExecutor() as executor:
-            refined_pdf = list(
-                executor.map(
-                    refine_extracted_elements_with_context,
-                    list_pdf_docs, QUERIES, context_list
-                )
-            )
+        print("Result from analyze_two_pushes:") 
+        baseline_text = result["baseline_content"]  # previous version
+        # updated_text  = result["updated_content"]   # new version
+        diff_text = result["diff"]  # unified diff output
+        # print ("Baseline Text: =============== \n", baseline_text )
+        # print ("Diff Text: ===============\n", diff_text )
 
-        # 3) Notebook text via GitHub push
-        push_id = get_latest_push_id_from_file()
-        notebook_text = read_notebook_with_outputs(GITHUB_OWNER, GITHUB_REPO, push_id, NOTEBOOK_FILE_PATH)
-        code_hash = get_string_hash(notebook_text)
-        collection_nb, _ = get_or_create_embeddings(
-            text=notebook_text,
-            _embedding_model=embedding_model,
-            collection_name=f"notebook_{code_hash}"
-        )
+        try:
+            # Expect you already defined these in your session:
+            #   WHITEPAPER_, code_diff, old_code = ...
+            print("Inside Try block ======================")
+            output = run_pipeline_from_vars(wp_text= whitepaper_text,  diff_text= diff_text, v1_text= baseline_text)
+            # print("Run pipeline fron vars runs successfully")
+            # print(output["phase1_summary"])
+            # print("\n" + output["phase2_table"])
+            # print("\n" + output["phase2_highlights"])
+            # print("\n" + output["phase2_notes"])
+            # print("\n" + output["final_prompt"])
 
-        list_notebook_docs = queryFun_parallel(QUERIES, embedding_model, collection_nb)
-        with ThreadPoolExecutor() as executor:
-            refined_nb = list(
-                executor.map(
-                    refine_extracted_elements_with_context,
-                    list_notebook_docs, QUERIES, context_list
-                )
-            )
+            # ---------------- Example usage ----------------
+            print("Run pipeline from vars runs successfully")
 
-        # 4) Compare
-        def compare_all():
-            with ThreadPoolExecutor() as executor:
-                return list(executor.map(
-                    compare_functionalities,
-                    refined_pdf,
-                    refined_nb
-                ))
+            output_summary = build_html_report_via_llm(output, llm)
 
-        comparisons = compare_all()
+            # now `output_summary` holds the full HTML string
+            # you can pass it directly to React: dangerouslySetInnerHTML={{ __html: output_summary }}
 
-        # 5) Summarize and persist
-        output = summarize("\n\n".join(comparisons))
-        with open(OUTPUT_TXT, "w", encoding="utf-8") as f:
-            f.write(output)
+            print("\n=== OUTPUT SUMMARY ===\n")
+            # print(output_summary)
 
-        return output
+        except NameError:
+            print("Define WHITEPAPER_, code_diff, old_code in your environment, or import run_pipeline_from_vars() and call it directly.")
+
+        return output_summary
 
     except Exception as e:
         # Bubble up so FastAPI can return proper error
-        raise
+        print("Exception in main block")
+
+
+if __name__ == "__main__":
+    # Example usage
+    try:
+        result = main(WHITEPAPER_NAME, VERSION_NUMBER)
+        # print(result)
+    except Exception as e:
+        print(f"Error: {e}")
 
