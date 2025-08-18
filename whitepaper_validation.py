@@ -36,7 +36,6 @@ embedding_model = OpenAIEmbeddings(model="text-embedding-3-small")
 CHROMA_PATH = "./chroma_openai1"
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 
-
 # GitHub config
 GITHUB_OWNER = "arunkenwal02"
 GITHUB_REPO = "code-validator"
@@ -45,8 +44,8 @@ NOTEBOOK_FILE_PATH = "loan-approval-prediction.ipynb"
 # Output file (as in your code)
 # OUTPUT_TXT = "white_paper_comparision.txt"
 
-WHITEPAPER_NAME = "Load Prediction Whitepaper.pdf"
-VERSION_NUMBER =1 
+# WHITEPAPER_NAME = "Load Prediction Whitepaper.pdf"
+# VERSION_NUMBER =1 
 
 
 def read_white_paper_from_gcp(filename, base_url, version_number):
@@ -295,7 +294,6 @@ def make_unified_diff(old_text: str, new_text: str, hint: str) -> str:
         lineterm=""
     )
     return "\n".join(diff) or "No differences found."
-
 
 def cumulative_push_diff(
     owner: str,
@@ -1064,22 +1062,23 @@ def main(whitepaper_name: str, version_number: int) -> str:
 
             print("\n=== OUTPUT SUMMARY ===\n")
             # print(output_summary)
+            return output_summary
 
         except NameError:
             print("Define WHITEPAPER_, code_diff, old_code in your environment, or import run_pipeline_from_vars() and call it directly.")
 
-        return output_summary
+        
 
     except Exception as e:
         # Bubble up so FastAPI can return proper error
         print("Exception in main block")
 
 
-if __name__ == "__main__":
-    # Example usage
-    try:
-        result = main(WHITEPAPER_NAME, VERSION_NUMBER)
-        # print(result)
-    except Exception as e:
-        print(f"Error: {e}")
+# if __name__ == "__main__":
+#     # Example usage
+#     try:
+#         result = main(WHITEPAPER_NAME, VERSION_NUMBER)
+#         # print(result)
+#     except Exception as e:
+#         print(f"Error: {e}")
 
