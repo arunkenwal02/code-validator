@@ -970,36 +970,34 @@ def run_pipeline_from_vars(
 
 
 def build_html_report_via_llm(output: dict, llm) -> str:
-    """
-    Use the LangChain ChatOpenAI `llm` to format pipeline results into one
-    self-contained HTML snippet, safe for dangerouslySetInnerHTML.
-    """
     sys_msg = (
-        "You output ONLY a single HTML document. No explanations, no markdown, no backticks. "
-        "Requirements:\n"
-        "1) Wrap everything in <div id='loan-approval-report'> ... </div>.\n"
-        "2) Include a <style> tag whose CSS selectors are ALL prefixed with #loan-approval-report.\n"
-        "3) Do NOT include <script> tags, external fonts, or global/unprefixed CSS.\n"
-        "4) Convert markdown tables/lists into proper HTML.\n"
-        "5) Keep order and headings exactly as provided.\n"
-    )
+    "You are a markdown formatter. "
+    "Your output must be in clean markdown only (no code fences or backticks). "
+    "Use proper headings (##, ###). "
+    "Always use bullet points for lists (never plain text lists). "
+    "For tabular data, render xas markdown tables. "
+    "Ensure the output is clean, readable, and consistent."
+)
 
     human_msg = f"""
-    Render the following sections to HTML in exactly this order:
+    Render the following sections into markdown format with clear headings and subheadings. 
+    - Use bullet points for all lists. 
+    - Format any tabular data as markdown tables.
+    - Ensure readability and structure.
 
-    SECTION 1 TITLE: PHASE 1 — Business-Focused Summary (Kept Sections Only)
+    ## { "PHASE 1 — Business-Focused Summary (Kept Sections Only)" }
     {output.get("phase1_summary","")}
 
-    SECTION 2 TITLE: PHASE 2 — Critical Metrics Comparison (Reported Only)
+    ## { "PHASE 2 — Critical Metrics Comparison (Reported Only)" }
     {output.get("phase2_table","")}
 
-    SECTION 3 TITLE: Highlights
+    ## { "Highlights" }
     {output.get("phase2_highlights","")}
 
-    SECTION 4 TITLE: Notes
+    ## { "Notes" }
     {output.get("phase2_notes","")}
 
-    SECTION 5 TITLE: Final Prompt (for LLM)
+    ## { "Final Prompt (for LLM)" }
     {output.get("final_prompt","")}
     """
 
@@ -1008,6 +1006,10 @@ def build_html_report_via_llm(output: dict, llm) -> str:
         HumanMessage(content=human_msg),
     ])
     return resp.content
+
+
+
+
 
 
 # -----------------End of white paper comparision with code --------------------
@@ -1072,6 +1074,7 @@ def main(whitepaper_name: str, version_number: int) -> str:
     except Exception as e:
         # Bubble up so FastAPI can return proper error
         print("Exception in main block")
+        return "Exception in main block"
 
 
 # if __name__ == "__main__":
