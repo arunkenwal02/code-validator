@@ -43,6 +43,7 @@ NOTEBOOK_FILE_PATH = "loan-approval-prediction.ipynb"
 
 # Output file (as in your code)
 # OUTPUT_TXT = "white_paper_comparision.txt"
+OUTPUT_TXT = "white_paper_loan_approval_report.txt"
 
 # WHITEPAPER_NAME = "Load Prediction Whitepaper.pdf"
 # VERSION_NUMBER =1 
@@ -1063,6 +1064,12 @@ def main(whitepaper_name: str, version_number: int) -> str:
             # you can pass it directly to React: dangerouslySetInnerHTML={{ __html: output_summary }}
 
             print("\n=== OUTPUT SUMMARY ===\n")
+
+            
+            with open(OUTPUT_TXT, "w", encoding="utf-8") as f:
+                f.write(output_summary)
+
+            print(f"Report saved to {OUTPUT_TXT}")
             # print(output_summary)
             return output_summary
 
