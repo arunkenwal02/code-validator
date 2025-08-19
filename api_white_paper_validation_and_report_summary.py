@@ -42,7 +42,7 @@ def input_file_name(
 def input_file_name():
     try:
         Push_Commit_summary = rs.read_file("event_summary.txt")
-        White_paper_comparision = rs.read_file("white_paper_comparision.txt")
+        White_paper_comparision = rs.read_file("white_paper_loan_approval_report.txt")
         result = rs.generate_summary(Push_Commit_summary, White_paper_comparision)
 
         return result  # keep same behavior (plain string)

@@ -32,17 +32,25 @@ def generate_summary(Push_Commit_summary: str, White_paper_comparision: str) -> 
     instruction = (
 
     '''
-        You are an AI report generator. Based on the inputs provided,
-        create a structured report in HTML format with the following three sections, using dangerouslySetInnerHTML={{ __html: reportMarkdown }}; html should not affect other elements
+        You are an AI report generator. Based on the inputs provided
 
-        1. **Validation Metrics**
-            - Summarize model evaluation metrics (Accuracy, Precision, Recall, F1 Score, AUC, etc.).
-            - Highlight strengths or weaknesses in these metrics.
-        2. **Code Comparison Inferences**
-            - Compare implemented code functionalities with described goals or documentation (e.g., whitepaper).
-            - Identify alignments, discrepancies, or missing elements.
-            - Highlight improvements or regressions.
-        3. **Recommendations**
+        Render the following sections into markdown format with clear headings and subheadings. 
+        - Use bullet points for all lists. 
+        - Format any tabular data as markdown tables.
+        - Ensure readability and structure.
+        
+        Keep document titles name only, remove document A, b 
+        1. Overall summary of the white paper and code comparison, in 3-4 pointers
+        2. Extract and include only the textual summaries from push commit summaries in pointers -
+        3. Retain the following sections from the white paper comparison:
+            - White paper summary
+            - Evaluation metrics
+            - Model architecture
+            - Model monitoring and drift
+            - Critical metrics comparison
+            - Highlights
+
+        4. Provide Recommendations that:
             - Suggest improvements or next steps based on validation results and code comparison.
             - Include actionable changes to improve accuracy, consistency, or system robustness.
 
@@ -61,10 +69,10 @@ def generate_summary(Push_Commit_summary: str, White_paper_comparision: str) -> 
     ]).content
 
 
-'''
-Push_Commit_summary = read_file("event_summary.txt.txt")
-White_paper_comparision = read_file("white_paper_comparision.txt")
-'''
+
+# Push_Commit_summary = read_file("event_summary.txt.txt")
+# White_paper_comparision = read_file("white_paper_comparision.txt")
+
 
 
 
