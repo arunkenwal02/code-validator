@@ -1,1 +1,75 @@
+Here are the test cases that validate preprocessing, model training, predictions, and evaluation based on the provided Jupyter Notebook code:
 
+### Preprocessing Test Cases
+- **Test Case 1: Data Import**
+  - **Input:** Load training data from the specified URL.
+  - **Expected Output:** The dataframe `df_train` should contain 12 columns and a number of rows equal to the dataset size.
+
+- **Test Case 2: Data Type Conversion**
+  - **Input:** Convert 'Credit_History' to object type and 'Loan_Status' to integer type.
+  - **Expected Output:** `df_train['Credit_History']` should be of type `object`, and `df_train['Loan_Status']` should be of type `int`.
+
+- **Test Case 3: Handling Missing Values for 'Dependents'**
+  - **Input:** Check and replace missing values in 'Dependents' column with "0".
+  - **Expected Output:** `df_train['Dependents'].isna().sum()` should return 0 after filling.
+
+- **Test Case 4: Handling Missing Values for 'Self_Employed'**
+  - **Input:** Check and replace missing values in 'Self_Employed' column with "No".
+  - **Expected Output:** `df_train['Self_Employed'].isna().sum()` should return 0 after filling.
+
+- **Test Case 5: Handling Missing Values for 'Loan_Amount_Term'**
+  - **Input:** Check and replace missing values in 'Loan_Amount_Term' with 360.
+  - **Expected Output:** `df_train['Loan_Amount_Term'].isna().sum()` should return 0 after filling.
+
+- **Test Case 6: Categorical Data Summary**
+  - **Input:** Generate value counts for each categorical column in `df_train`.
+  - **Expected Output:** Non-empty value counts for all categorical columns.
+
+- **Test Case 7: Check for Remaining Missing Values**
+  - **Input:** After all filling operations, check for any remaining missing values.
+  - **Expected Output:** `df_train.isna().sum().sum()` should return 0.
+
+### Model Training Test Cases
+- **Test Case 8: Train-Test Split**
+  - **Input:** Split `df_train` into training and validation sets (70% train, 30% validation).
+  - **Expected Output:** `X_train` should have 70% of the rows and `X_val` should have 30% of the rows of `df_train`.
+
+- **Test Case 9: Model Initialization**
+  - **Input:** Initialize models for Logistic Regression, Decision Tree, and Random Forest.
+  - **Expected Output:** Each model should be an instance of its respective class.
+
+- **Test Case 10: Grid Search for Hyperparameter Tuning**
+  - **Input:** Perform Grid Search for each model based on specified parameters.
+  - **Expected Output:** A fitted model should be returned for each model type with the best parameters.
+
+### Prediction Test Cases
+- **Test Case 11: Model Predictions**
+  - **Input:** Use the best model from Grid Search to predict on the validation set.
+  - **Expected Output:** The prediction array `y_pred` should have the same length as `y_val`.
+
+- **Test Case 12: Predict Probability Check**
+  - **Input:** Check if the model supports `predict_proba`.
+  - **Expected Output:** If applicable, `y_probs` should be an array with probabilities for the positive class.
+
+### Evaluation Test Cases
+- **Test Case 13: Calculate Precision**
+  - **Input:** Calculate precision using the `y_val` and `y_pred`.
+  - **Expected Output:** Precision score should be a float value between 0 and 1.
+
+- **Test Case 14: Calculate Recall**
+  - **Input:** Calculate recall using the `y_val` and `y_pred`.
+  - **Expected Output:** Recall score should be a float value between 0 and 1.
+
+- **Test Case 15: Calculate F1 Score**
+  - **Input:** Calculate F1 score using the `y_val` and `y_pred`.
+  - **Expected Output:** F1 score should be a float value between 0 and 1.
+
+- **Test Case 16: Confusion Matrix Validation**
+  - **Input:** Generate a confusion matrix based on `y_val` and `y_pred`.
+  - **Expected Output:** The confusion matrix should be a 2x2 array.
+
+- **Test Case 17: AUC Calculation for PR Curve**
+  - **Input:** Calculate the area under the precision-recall curve.
+  - **Expected Output:** AUC should be a float value between 0 and 1.
+
+These test cases cover the key functionalities of the preprocessing steps, model training, predictions, and evaluation metrics in the provided Jupyter Notebook code.
