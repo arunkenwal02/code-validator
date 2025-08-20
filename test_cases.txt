@@ -1,4 +1,4 @@
-Here is a list of test cases based on the provided Jupyter Notebook code:
+Here are some meaningful test cases based on the provided Jupyter Notebook code:
 
 - **Test Case 1: Data Import Validation**
   - **Description**: Validates that the training and testing datasets are imported correctly and have the expected dimensions.
@@ -16,7 +16,7 @@ Here is a list of test cases based on the provided Jupyter Notebook code:
     ```
 
 - **Test Case 2: Missing Values Handling**
-  - **Description**: Ensures that missing values in the training and testing datasets are handled correctly.
+  - **Description**: Validates that missing values in the training and testing datasets are handled correctly.
   - **How to Perform**:
     ```python
     # Check missing values before handling
@@ -48,7 +48,7 @@ Here is a list of test cases based on the provided Jupyter Notebook code:
     ```
 
 - **Test Case 4: One-Hot Encoding Validation**
-  - **Description**: Ensures that categorical columns are correctly one-hot encoded.
+  - **Description**: Validates that categorical columns are one-hot encoded correctly.
   - **How to Perform**:
     ```python
     # Perform one-hot encoding
@@ -61,37 +61,63 @@ Here is a list of test cases based on the provided Jupyter Notebook code:
         assert col in df_concat.columns, f"Missing one-hot encoded column: {col}"
     ```
 
-- **Test Case 5: Model Training and Hyperparameter Tuning**
-  - **Description**: Validates that models are trained and hyperparameters are tuned correctly using GridSearchCV.
+- **Test Case 5: Model Training and Best Model Selection**
+  - **Description**: Validates that models are trained correctly and the best model is selected based on F1 score.
   - **How to Perform**:
     ```python
-    from sklearn.model_selection import GridSearchCV
+    from sklearn.model_selection import train_test_split, GridSearchCV
     from sklearn.linear_model import LogisticRegression
+    from sklearn.tree import DecisionTreeClassifier
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import f1_score
 
-    # Define model and parameters
-    model = LogisticRegression()
-    params = {'penalty': ['l2'], 'C': [0.01, 0.1, 1, 10], 'solver': ['liblinear'], 'max_iter': [100, 200]}
+    # Split data
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    # Perform GridSearchCV
-    grid = GridSearchCV(model, params, cv=5, scoring='f1', n_jobs=-1)
-    grid.fit(X_train, y_train)
+    # Define model configurations
+    model_configs = {
+        'Logistic Regression': {
+            'model': LogisticRegression(),
+            'params': {'penalty': ['l2'], 'C': [0.01, 0.1, 1], 'solver': ['liblinear']}
+        },
+        'Decision Tree': {
+            'model': DecisionTreeClassifier(),
+            'params': {'max_depth': [3, 5, 10], 'min_samples_split': [2, 5], 'criterion': ['gini', 'entropy']}
+        },
+        'Random Forest': {
+            'model': RandomForestClassifier(),
+            'params': {'n_estimators': [50, 100], 'max_depth': [5, 10], 'min_samples_leaf': [1, 2]}
+        }
+    }
 
-    # Validate best parameters
-    assert grid.best_params_ is not None, "GridSearchCV did not find best parameters"
+    # Track best model
+    best_f1 = 0
+    best_model_name = None
+
+    for name, config in model_configs.items():
+        grid = GridSearchCV(config['model'], config['params'], cv=5, scoring='f1', n_jobs=-1)
+        grid.fit(X_train, y_train)
+        y_pred = grid.predict(X_val)
+        f1 = f1_score(y_val, y_pred)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_model_name = name
+
+    # Validate best model selection
+    assert best_model_name is not None, "No best model selected"
     ```
 
 - **Test Case 6: Model Evaluation Metrics**
-  - **Description**: Ensures that evaluation metrics (precision, recall, F1 score, PR-AUC) are calculated correctly.
+  - **Description**: Validates that the evaluation metrics (Precision, Recall, F1 Score, PR-AUC) are calculated correctly.
   - **How to Perform**:
     ```python
     from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_curve, auc
 
-    # Predict and calculate metrics
-    y_pred = grid.predict(X_val)
+    # Assume y_pred and y_probs are obtained from the best model
     precision = precision_score(y_val, y_pred, zero_division=0)
     recall = recall_score(y_val, y_pred, zero_division=0)
     f1 = f1_score(y_val, y_pred, zero_division=0)
-    precision_curve, recall_curve, _ = precision_recall_curve(y_val, y_pred)
+    precision_curve, recall_curve, _ = precision_recall_curve(y_val, y_probs)
     pr_auc = auc(recall_curve, precision_curve)
 
     # Validate metrics
@@ -101,17 +127,4 @@ Here is a list of test cases based on the provided Jupyter Notebook code:
     assert 0 <= pr_auc <= 1, f"Invalid PR-AUC: {pr_auc}"
     ```
 
-- **Test Case 7: Confusion Matrix Validation**
-  - **Description**: Validates that the confusion matrix is generated correctly for each model.
-  - **How to Perform**:
-    ```python
-    from sklearn.metrics import confusion_matrix
-
-    # Generate confusion matrix
-    cm = confusion_matrix(y_val, y_pred)
-
-    # Validate confusion matrix shape
-    assert cm.shape == (2, 2), f"Unexpected confusion matrix shape: {cm.shape}"
-    ```
-
-These test cases cover the key aspects of data preprocessing, model training, predictions, and evaluation as described in the provided code.
+These test cases cover the key aspects of data preprocessing, model training, and evaluation as described in the provided code.
