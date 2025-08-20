@@ -51,8 +51,9 @@ def generate_summary(Push_Commit_summary: str, White_paper_comparision: str) -> 
             - Highlights
 
         4. Provide Recommendations that:
-            - Suggest improvements or next steps based on validation results and code comparison.
-            - Include actionable changes to improve accuracy, consistency, or system robustness.
+            - Suggest improvements or next steps based:
+                - Compare white paper and code Evalulation metrics suggest based on differences
+                - Include actionable changes to improve accuracy, consistency, or system robustness.
 
     '''
     )

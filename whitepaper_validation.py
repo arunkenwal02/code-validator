@@ -45,7 +45,7 @@ NOTEBOOK_FILE_PATH = "loan-approval-prediction.ipynb"
 # OUTPUT_TXT = "white_paper_comparision.txt"
 OUTPUT_TXT = "white_paper_loan_approval_report.txt"
 
-# WHITEPAPER_NAME = "Load Prediction Whitepaper.pdf"
+# WHITEPAPER_NAME = "Loan Prediction Whitepaper.pdf"
 # VERSION_NUMBER =1 
 
 
@@ -430,7 +430,7 @@ SECTION_QUERIES: Dict[str, List[str]] = {
     ],
     "Training Methodology": ["train test split", "validation", "k-fold", "grid search", "cross-validation", "threshold"],
     "Evaluation Metrics": [
-        "metrics", "accuracy", "precision", "recall", "f1", "pr-auc", "roc-auc", "specificity",
+        "metrics",  "precision", "recall", "f1", "pr-auc", "specificity",
         "best model", "evaluation", "validation score", "test score"
     ],
     "Model Monitoring & Drift": [
@@ -455,13 +455,13 @@ SECTION_QUERIES: Dict[str, List[str]] = {
 
 # Metrics to consider for Phase 2
 METRIC_PATTERNS = {
-    "Accuracy": r"\baccuracy\b",
+    # "Accuracy": r"\baccuracy\b",
     "Precision": r"\bprecision\b|\bppv\b",
     "Recall": r"\brecall\b|\bsensitivity\b|\btpr\b",
     "F1-Score": r"\bf1(?:[-\s]?score)?\b",
     "PR-AUC": r"\bpr-?auc\b|\bprecision[-\s]?recall\s*auc\b|\baverage\s*precision\b|\bAP\b",
-    "ROC-AUC": r"\broc-?auc\b|\bauc\b(?!\s*pr)",
-    "Specificity": r"\bspecificity\b|\btnr\b",
+    # "ROC-AUC": r"\broc-?auc\b|\bauc\b(?!\s*pr)",
+    # "Specificity": r"\bspecificity\b|\btnr\b",
 }
 VALUE_PATTERN = r"(?:(?:~|≈|=)?\s*)(\d+(?:\.\d+)?)(\s*%)?"
 
@@ -511,6 +511,7 @@ def chunk_whitepaper(text: str) -> List[str]:
     if not chunks:
         chunks = _simple_paragraphs(text)
     return chunks
+
 
 def chunk_code_diff(text: str) -> List[str]:
     # split on list bullets and blank lines to capture atomic statements from diffs
@@ -608,9 +609,9 @@ def extract_preprocessing_steps_wp(wp_text: str) -> List[str]:
 _MODEL_PATTERNS = [
     ("Logistic Regression", r"logistic\s+regress"),
     ("Random Forest", r"random\s+forest"),
-    ("XGBoost", r"xgboost|xgb"),
-    ("SVM", r"\bsvm\b|support\s+vector"),
-    ("Decision Tree", r"decision\s+tree"),
+    # ("XGBoost", r"xgboost|xgb"),
+    # ("SVM", r"\bsvm\b|support\s+vector"),
+    # ("Decision Tree", r"decision\s+tree"),
 ]
 
 _HYPER_PATTERNS = [
@@ -684,7 +685,7 @@ def _bullets_grouped_by_source(section_items: List[FilteredItem], bullets_per_so
 def _format_metrics_line(metrics: Dict[str, float]) -> Optional[str]:
     if not metrics:
         return None
-    ordered = ["Accuracy", "Precision", "Recall", "F1-Score", "PR-AUC", "ROC-AUC", "Specificity"]
+    ordered = [ "Precision", "Recall", "F1-Score", "PR-AUC"]
     parts = []
     for m in ordered:
         if m in metrics:
@@ -850,6 +851,7 @@ def build_phase2(whitepaper: str, code_diff: str, old_code: str) -> Tuple[str, s
     ]
     return "\n".join(table), "\n".join(highlights), "\n".join(notes)
 
+
 def build_prompt(
     items: List[FilteredItem],
     table: str,
@@ -863,11 +865,11 @@ def build_prompt(
     Sections to include (in order):
       1) Summary — executive overview for stakeholders (WP-only).
       2) Data Description.
-      3) Preprocessing — LIST ALL steps discovered (imputation, encoding, scaling, balancing, feature engineering, etc.).
-      4) Model Architecture — STATE the FINAL model; KEEP hyperparameters & scores from the White Paper if present.
+      3) Preprocessing — LIST ALL steps discovered (imputation, encoding, scaling, balancing, feature engineering, etc.) and respective scores.
+      4) Model Architecture — STATE the FINAL model; KEEP hyperparameters and respective scores from the White Paper if present.
          Otherwise, explicitly ASK stakeholders for the business justification.
-      5) Evaluation Details & Metrics — include BOTH the evaluation approach and the MAIN metrics/scores
-         for the FINAL model, with an explicit White Paper scores line first when available.
+      5) Evaluation Details & Metrics — include BOTH the evaluation scores and the MAIN metrics/scores
+         for the FINAL model, with an explicit White Paper scores line first when available and from code as well.
       6) Model Monitoring & Drift — detailed guidance (what to track, thresholds, cadence, alerting, retraining triggers).
       7) Fallback / Human-in-the-Loop — criteria/thresholds for fallback and WHEN to route to human review (critical conditions).
       8) Stress Conditions / Scenario Analysis — scenarios and mitigation strategies.
@@ -970,46 +972,118 @@ def run_pipeline_from_vars(
     }
 
 
-def build_html_report_via_llm(output: dict, llm) -> str:
+
+
+
+
+
+
+def build_html_report_via_llm(output: dict, llm, metrics) -> str:
     sys_msg = (
-    "You are a markdown formatter. "
-    "Your output must be in clean markdown only (no code fences or backticks). "
-    "Use proper headings (##, ###). "
-    "Always use bullet points for lists (never plain text lists). "
-    "For tabular data, render xas markdown tables. "
-    "Ensure the output is clean, readable, and consistent."
-)
+    """
+    You are a markdown formatter.  
+    - Output must be clean markdown only (no code fences or backticks).  
+    - Use proper headings (##, ###).  
+    - Always use bullet points for lists.  
+    - Render tabular data as markdown tables.  
+    - Ensure readability and consistent structure.  
+
+    Rules:  
+    - For each kept section, group bullets by source tag: [WP], [Code Diff], [Code-v1].  
+    - Use short, outcome-oriented bullets suitable for business stakeholders.  
+    - No raw code blocks or “### CELL” headers. 
+    """
+    )
 
     human_msg = f"""
+    Here is the input content to be structured:
     Render the following sections into markdown format with clear headings and subheadings. 
     - Use bullet points for all lists. 
     - Format any tabular data as markdown tables.
     - Ensure readability and structure.
 
-    ## { "PHASE 1 — Business-Focused Summary (Kept Sections Only)" }
+    ## PHASE 1 — Business-Focused Summary (Kept Sections Only)
     {output.get("phase1_summary","")}
 
-    ## { "PHASE 2 — Critical Metrics Comparison (Reported Only)" }
+    ## PHASE 2 — Critical Metrics Comparison (Reported Only)
     {output.get("phase2_table","")}
 
-    ## { "Highlights" }
-    {output.get("phase2_highlights","")}
-
-    ## { "Notes" }
-    {output.get("phase2_notes","")}
-
-    ## { "Final Prompt (for LLM)" }
+    Do not include Highlights and Notes sections in the final output.
+    ## Final Prompt (for LLM)
     {output.get("final_prompt","")}
+
+    Format the output with clear section headings:
+    Render the following sections into markdown format with clear headings and subheadings. 
+    - Use bullet points for all lists. 
+    - Format any tabular data as markdown tables.
+    - Ensure readability and structure.
+
+    Format the output with clear section headings:
+    - WP
+    - Code Diff
+    - Gaps & Actions
+
+    Sections to include (in order):  
+    1) Summary in 2 lines — [WP only], keep summary short and business-oriented.
+    2) Data Description — include [WP], [Code Diff] add gaps & actions.  
+    3) Preprocessing — list all steps (imputation, encoding, scaling, balancing, feature engineering, etc.); tag whether added/removed in this version; xinclude [WP], [Code Diff] include gaps & actions.  
+    4) Model Architecture — state the final model and hyperparameters; and best hyper parameter scores, include WP and code details; if missing, ask stakeholders for justification.  
+    5) Evaluation Details & Metrics — show evaluation approach and main metrics/scores; WP first, then code.  
+    6) Model Monitoring & Drift — track what is available from WP, Code Diff, Code-v1; if missing, note details not available.  
+    7) Fallback / Human-in-the-Loop — define fallback thresholds/criteria and human review triggers; mention if not available.  
+    8) Stress Conditions / Scenario Analysis — scenarios and mitigations; mention if not available.  
+
+    Keep Phase 2 and exclude, Highlights and Notes sections in the final output.
+
+    Take the following into metrics for White paper:
+    {metrics}
+    Finally, add:  
+    If differences exist between WP and Code Diff/Code-v1 → only note 
+    *Note: White paper is not aligned with latest version, update the code.*
+
+    If no differences exist → only onte
+    *Note: White paper is updated, no need to update.*
     """
 
     resp = llm.invoke([
         SystemMessage(content=sys_msg),
         HumanMessage(content=human_msg),
     ])
+    
     return resp.content
 
 
+# -------------------- Metrics extraction via OpenAI LLM --------------------
 
+
+def extract_metrics_with_langchain(llm, text) -> dict:
+    """
+    Extract evaluation metrics eg. Precision, Recall, F1, PR_AUC
+    from a long input text using LangChain LLM (passed as argument).
+    """
+    prompt = f"""
+    Extract evaluation metrics from the following text. 
+    Return ONLY valid JSON with keys: eg. Precision, Recall, F1, PR_AUC.
+    If a metric is missing, set its value to null.
+
+    Text:
+    {text}
+    """
+
+    response = llm.invoke(prompt)
+    content = response.content.strip()
+    print("Json Content:\n", content)
+
+
+    return content
+
+
+
+
+ 
+
+
+  
 
 
 
@@ -1024,6 +1098,10 @@ def main(whitepaper_name: str, version_number: int) -> str:
         print("First two push IDs:", first_two)
         first_push_id = first_two[1]
         second_push_id = first_two[0]
+        print("White paper text length: ", len(whitepaper_text))
+        metrics = extract_metrics_with_langchain(llm=llm,  text = whitepaper_text)
+
+        print("Metrics:-----------\n,",metrics)
 
         push_id_1 = first_push_id  
         push_id_2 = second_push_id  
@@ -1058,7 +1136,7 @@ def main(whitepaper_name: str, version_number: int) -> str:
             # ---------------- Example usage ----------------
             print("Run pipeline from vars runs successfully")
 
-            output_summary = build_html_report_via_llm(output, llm)
+            output_summary = build_html_report_via_llm(output, llm, metrics)
 
             # now `output_summary` holds the full HTML string
             # you can pass it directly to React: dangerouslySetInnerHTML={{ __html: output_summary }}
@@ -1082,13 +1160,4 @@ def main(whitepaper_name: str, version_number: int) -> str:
         # Bubble up so FastAPI can return proper error
         print("Exception in main block")
         return "Exception in main block"
-
-
-# if __name__ == "__main__":
-#     # Example usage
-#     try:
-#         result = main(WHITEPAPER_NAME, VERSION_NUMBER)
-#         # print(result)
-#     except Exception as e:
-#         print(f"Error: {e}")
 

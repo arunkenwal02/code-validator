@@ -1,0 +1,85 @@
+## Summary
+
+- The financial services industry faces challenges in automating and de-risking the loan approval process. A machine learning-based Loan Approval Classification System has been developed to address these issues. [WP]
+
+## Data Description
+
+- **[WP]** The model uses a comprehensive dataset of past loan applications, including demographic, financial, and behavioral features.
+  - Features include Loan_ID, Gender, Married, Dependents, Education, Self_Employed, Applicant_Income, etc.
+  - Class balancing is achieved using the 'class_weight' parameter in Logistic Regression and SMOTE for minority class data points.
+
+- **[Code Diff]** Data partitioning details:
+  - Training set: 324 samples, 14 features
+  - Validation set: 140 samples, 14 features
+  - Testing set: 106 samples, 14 features
+
+- **Gaps & Actions**: Ensure data partitioning aligns with business needs and regulatory requirements.
+
+## Preprocessing
+
+- **[WP]** Preprocessing steps include:
+  - Missing value imputation
+  - One-hot/label encoding
+  - Scaling/standardization
+  - Class balancing (SMOTE/over/under)
+  - Feature engineering
+  - Data type consistency/cleaning
+
+- **[Code Diff]** Recent changes:
+  - Added one-hot encoding for categorical variables
+  - Dropped Loan_ID column
+
+- **Gaps & Actions**: Verify preprocessing steps are consistently applied across datasets.
+
+## Model Architecture
+
+- **[WP]** The final model is Logistic Regression, chosen for its transparency and explainability.
+  - Hyperparameters include 'class_weight' for balancing, and SMOTE for minority class handling.
+
+- **[Code Diff]** Best parameters for Logistic Regression:
+  - C: 1, max_iter: 100, penalty: 'l2', solver: 'liblinear'
+  - Precision: 87.16%, Recall: 95.96%, F1 Score: 91.35%, PR-AUC: 84.27%
+
+- **Gaps & Actions**: Ensure hyperparameter tuning aligns with business objectives and regulatory standards.
+
+## Evaluation Details & Metrics
+
+- **[WP]** Evaluation prioritizes precision to avoid loan defaults and uses F1-score for balanced approval.
+  - Metrics: Precision = 87.1%, Recall = 95.9%, F1-Score = 88.7%, PR-AUC = 86.7%
+
+- **[Code Diff]** Metrics from code:
+  - Precision: 87.16%, Recall: 95.96%, F1 Score: 91.35%, PR-AUC: 84.27%
+
+- **Gaps & Actions**: Align evaluation metrics with business goals and ensure consistent reporting.
+
+## Model Monitoring & Drift
+
+- **[WP]** Includes alerting systems for performance degradation and concept drift detection.
+  - Incorporates economic indicators for resilience to economic shifts.
+
+- **Gaps & Actions**: Ensure monitoring systems are robust and responsive to changes.
+
+## Fallback / Human-in-the-Loop
+
+- **[WP]** Fallback mechanisms include human oversight for uncertain cases and regular compliance checks.
+  - Bias mitigation techniques are employed to ensure fairness.
+
+- **Gaps & Actions**: Define clear criteria for human intervention and fallback scenarios.
+
+## Stress Conditions / Scenario Analysis
+
+- **[WP]** Temporary features were introduced during the pandemic to improve model performance under stress conditions.
+  - Automated alerts trigger investigations or retraining cycles if performance metrics fall below thresholds.
+
+- **Gaps & Actions**: Ensure stress testing scenarios are comprehensive and aligned with business risks.
+
+## Phase 2 — Critical Metrics Comparison
+
+| Metric    | White Paper Score | Code Diff Score | Delta (Code - WP) | Finding  |
+|-----------|-------------------|-----------------|-------------------|----------|
+| Precision | 87.1%             | 87.2%           | +0.1 pp           | Aligned  |
+| Recall    | 95.9%             | 96.0%           | +0.1 pp           | Aligned  |
+| F1-Score  | 88.7%             | 91.3%           | +2.6 pp           | Improved |
+| PR-AUC    | 86.7%             | 84.3%           | -2.4 pp           | Regressed|
+
+*Note: White paper is not aligned with latest version, update the code.*
