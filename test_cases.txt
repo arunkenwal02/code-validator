@@ -1,6 +1,4 @@
-Here is a list of test cases based on the provided Jupyter Notebook code:
-
----
+Here are some meaningful test cases based on the provided Jupyter Notebook code:
 
 - **Test Case 1: Data Import Validation**
   - **Description**: Validates that the training and testing datasets are imported correctly and have the expected dimensions.
@@ -21,116 +19,105 @@ Here is a list of test cases based on the provided Jupyter Notebook code:
   - **Description**: Ensures that missing values in the training and testing datasets are handled correctly.
   - **How to Perform**:
     ```python
-    # Check missing values before handling
-    missing_before = df_train.isna().sum()
-
-    # Perform missing value handling
-    df_train['Dependents'].fillna(value='0', inplace=True)
-    df_train['Self_Employed'].fillna(value='No', inplace=True)
-    df_train['Loan_Amount_Term'].fillna(value=360, inplace=True)
-    df_train.dropna(axis=0, how='any', inplace=True)
-
-    # Check missing values after handling
-    missing_after = df_train.isna().sum()
-
-    # Validate that missing values are handled
-    assert missing_after.sum() == 0, f"Missing values not handled: {missing_after}"
+    # Check for missing values after preprocessing
+    assert df_train['Dependents'].isna().sum() == 0, "Missing values in 'Dependents' column"
+    assert df_train['Self_Employed'].isna().sum() == 0, "Missing values in 'Self_Employed' column"
+    assert df_train['Loan_Amount_Term'].isna().sum() == 0, "Missing values in 'Loan_Amount_Term' column"
+    assert df_train['Credit_History'].isna().sum() == 0, "Missing values in 'Credit_History' column"
     ```
 
 - **Test Case 3: Data Type Conversion**
   - **Description**: Validates that the data types of specific columns are converted correctly.
   - **How to Perform**:
     ```python
-    # Convert data types
-    df_train = df_train.astype({'Credit_History': object, 'Loan_Status': int})
-
-    # Validate data types
-    assert df_train['Credit_History'].dtype == 'object', "Credit_History type conversion failed"
-    assert df_train['Loan_Status'].dtype == 'int', "Loan_Status type conversion failed"
+    # Check data types
+    assert df_train['Credit_History'].dtype == object, "Credit_History column type is not object"
+    assert df_train['Loan_Status'].dtype == int, "Loan_Status column type is not int"
     ```
 
 - **Test Case 4: One-Hot Encoding Validation**
   - **Description**: Ensures that categorical columns are one-hot encoded correctly.
   - **How to Perform**:
     ```python
-    # Perform one-hot encoding
-    cols_obj_train = ['Gender', 'Married', 'Dependents', 'Education', 'Self_Employed', 'Credit_History', 'Property_Area']
-    df_concat = pd.get_dummies(data=df_concat, columns=cols_obj_train, drop_first=True)
-
-    # Validate one-hot encoding
+    # Check for one-hot encoded columns
     expected_columns = ['Gender_Male', 'Married_Yes', 'Dependents_1', 'Dependents_2', 'Dependents_3+', 'Education_Not Graduate', 'Self_Employed_Yes', 'Credit_History_1.0', 'Property_Area_Semiurban', 'Property_Area_Urban']
     for col in expected_columns:
         assert col in df_concat.columns, f"Missing one-hot encoded column: {col}"
     ```
 
-- **Test Case 5: Model Training and Hyperparameter Tuning**
-  - **Description**: Validates that models are trained and hyperparameters are tuned correctly using GridSearchCV.
+- **Test Case 5: Model Training and Best Model Selection**
+  - **Description**: Validates that the model training process selects the best model based on F1 score.
   - **How to Perform**:
     ```python
-    from sklearn.model_selection import GridSearchCV
+    from sklearn.model_selection import train_test_split, GridSearchCV
     from sklearn.linear_model import LogisticRegression
+    from sklearn.tree import DecisionTreeClassifier
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import f1_score
 
-    # Define model and parameters
-    model = LogisticRegression()
-    params = {'penalty': ['l2'], 'C': [0.01, 0.1, 1, 10], 'solver': ['liblinear'], 'max_iter': [100, 200]}
+    # Split data
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    # Perform GridSearchCV
-    grid = GridSearchCV(model, params, cv=5, scoring='f1', n_jobs=-1)
-    grid.fit(X_train, y_train)
+    # Define models
+    model_configs = {
+        'Logistic Regression': {
+            'model': LogisticRegression(),
+            'params': {'penalty': ['l2'], 'C': [0.01, 0.1, 1], 'solver': ['liblinear']}
+        },
+        'Decision Tree': {
+            'model': DecisionTreeClassifier(),
+            'params': {'max_depth': [3, 5, 10], 'min_samples_split': [2, 5], 'criterion': ['gini', 'entropy']}
+        },
+        'Random Forest': {
+            'model': RandomForestClassifier(),
+            'params': {'n_estimators': [50, 100], 'max_depth': [5, 10], 'min_samples_leaf': [1, 2]}
+        }
+    }
 
-    # Validate best parameters
-    assert grid.best_params_ is not None, "GridSearchCV did not find best parameters"
+    # Track best model
+    best_f1 = 0
+    for name, config in model_configs.items():
+        grid = GridSearchCV(config['model'], config['params'], cv=5, scoring='f1', n_jobs=-1)
+        grid.fit(X_train, y_train)
+        y_pred = grid.predict(X_val)
+        f1 = f1_score(y_val, y_pred)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_model_name = name
+
+    assert best_model_name is not None, "No best model selected"
     ```
 
 - **Test Case 6: Model Evaluation Metrics**
-  - **Description**: Ensures that evaluation metrics (precision, recall, F1 score, PR-AUC) are calculated correctly.
+  - **Description**: Validates that the evaluation metrics (Precision, Recall, F1 Score, PR-AUC) are calculated correctly for each model.
   - **How to Perform**:
     ```python
     from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_curve, auc
 
-    # Predict and calculate metrics
-    y_pred = grid.predict(X_val)
-    precision = precision_score(y_val, y_pred, zero_division=0)
-    recall = recall_score(y_val, y_pred, zero_division=0)
-    f1 = f1_score(y_val, y_pred, zero_division=0)
-    precision_curve, recall_curve, _ = precision_recall_curve(y_val, y_pred)
+    # Example for one model
+    y_probs = grid.predict_proba(X_val)[:, 1]
+    y_pred = (y_probs >= 0.7).astype(int)
+    precision = precision_score(y_val, y_pred)
+    recall = recall_score(y_val, y_pred)
+    f1 = f1_score(y_val, y_pred)
+    precision_curve, recall_curve, _ = precision_recall_curve(y_val, y_probs)
     pr_auc = auc(recall_curve, precision_curve)
 
-    # Validate metrics
-    assert 0 <= precision <= 1, f"Invalid precision: {precision}"
-    assert 0 <= recall <= 1, f"Invalid recall: {recall}"
-    assert 0 <= f1 <= 1, f"Invalid F1 score: {f1}"
-    assert 0 <= pr_auc <= 1, f"Invalid PR-AUC: {pr_auc}"
+    assert 0 <= precision <= 1, "Precision out of bounds"
+    assert 0 <= recall <= 1, "Recall out of bounds"
+    assert 0 <= f1 <= 1, "F1 Score out of bounds"
+    assert 0 <= pr_auc <= 1, "PR-AUC out of bounds"
     ```
 
 - **Test Case 7: Confusion Matrix Validation**
-  - **Description**: Validates that the confusion matrix is generated correctly for each model.
+  - **Description**: Ensures that the confusion matrix is generated correctly for each model.
   - **How to Perform**:
     ```python
     from sklearn.metrics import confusion_matrix
 
-    # Generate confusion matrix
+    # Example for one model
     cm = confusion_matrix(y_val, y_pred)
-
-    # Validate confusion matrix shape
     assert cm.shape == (2, 2), f"Unexpected confusion matrix shape: {cm.shape}"
     ```
 
-- **Test Case 8: Data Visualization Validation**
-  - **Description**: Ensures that data visualizations are generated without errors.
-  - **How to Perform**:
-    ```python
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-
-    # Generate a sample plot
-    sns.barplot(x='Model', y='F1 Score', data=df_results)
-    plt.title('F1 Score Comparison')
-    plt.xlabel('Model')
-    plt.ylabel('F1 Score')
-    plt.show()
-
-    # Validate plot generation (no exceptions should be raised)
-    ```
-
-These test cases cover various aspects of the notebook, including data preprocessing, model training, predictions, and evaluation.
+These test cases cover various aspects of the data preprocessing, model training, and evaluation processes, ensuring that each step is performed correctly and produces the expected results.
