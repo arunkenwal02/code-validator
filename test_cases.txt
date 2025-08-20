@@ -39,7 +39,7 @@ Here are some meaningful test cases based on the provided Jupyter Notebook code:
   - **Description**: Ensures that categorical columns are one-hot encoded correctly.
   - **How to Perform**:
     ```python
-    # Check for one-hot encoded columns
+    # Check one-hot encoding
     expected_columns = ['Gender_Male', 'Married_Yes', 'Dependents_1', 'Dependents_2', 'Dependents_3+', 'Education_Not Graduate', 'Self_Employed_Yes', 'Credit_History_1.0', 'Property_Area_Semiurban', 'Property_Area_Urban']
     for col in expected_columns:
         assert col in df_concat.columns, f"Missing one-hot encoded column: {col}"
@@ -53,12 +53,8 @@ Here are some meaningful test cases based on the provided Jupyter Notebook code:
     from sklearn.linear_model import LogisticRegression
     from sklearn.tree import DecisionTreeClassifier
     from sklearn.ensemble import RandomForestClassifier
-    from sklearn.metrics import f1_score
 
-    # Split data
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=42)
-
-    # Define models
+    # Define model configurations
     model_configs = {
         'Logistic Regression': {
             'model': LogisticRegression(),
@@ -74,13 +70,15 @@ Here are some meaningful test cases based on the provided Jupyter Notebook code:
         }
     }
 
+    # Split data
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=42)
+
     # Track best model
     best_f1 = 0
     for name, config in model_configs.items():
         grid = GridSearchCV(config['model'], config['params'], cv=5, scoring='f1', n_jobs=-1)
         grid.fit(X_train, y_train)
-        y_pred = grid.predict(X_val)
-        f1 = f1_score(y_val, y_pred)
+        f1 = grid.best_score_
         if f1 > best_f1:
             best_f1 = f1
             best_model_name = name
@@ -89,18 +87,17 @@ Here are some meaningful test cases based on the provided Jupyter Notebook code:
     ```
 
 - **Test Case 6: Model Evaluation Metrics**
-  - **Description**: Validates that the evaluation metrics (Precision, Recall, F1 Score, PR-AUC) are calculated correctly for each model.
+  - **Description**: Validates that the evaluation metrics (Precision, Recall, F1 Score, PR-AUC) are calculated correctly for the best model.
   - **How to Perform**:
     ```python
     from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_curve, auc
 
-    # Example for one model
-    y_probs = grid.predict_proba(X_val)[:, 1]
-    y_pred = (y_probs >= 0.7).astype(int)
+    # Assume best_model is already trained
+    y_pred = best_model.predict(X_val)
     precision = precision_score(y_val, y_pred)
     recall = recall_score(y_val, y_pred)
     f1 = f1_score(y_val, y_pred)
-    precision_curve, recall_curve, _ = precision_recall_curve(y_val, y_probs)
+    precision_curve, recall_curve, _ = precision_recall_curve(y_val, y_pred)
     pr_auc = auc(recall_curve, precision_curve)
 
     assert 0 <= precision <= 1, "Precision out of bounds"
@@ -115,7 +112,7 @@ Here are some meaningful test cases based on the provided Jupyter Notebook code:
     ```python
     from sklearn.metrics import confusion_matrix
 
-    # Example for one model
+    # Assume y_pred is the prediction from the best model
     cm = confusion_matrix(y_val, y_pred)
     assert cm.shape == (2, 2), f"Unexpected confusion matrix shape: {cm.shape}"
     ```
