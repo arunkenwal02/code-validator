@@ -7,49 +7,50 @@ To ensure the robustness and correctness of the code provided in the Jupyter Not
 
 - **Test Case 2: Missing Values Handling**
   - Ensure that missing values in the `Dependents`, `Self_Employed`, and `Loan_Amount_Term` columns are correctly replaced with '0', 'No', and 360, respectively.
-  - Validate that the `Credit_History` missing values are replaced based on the `Loan_Status` condition.
+  - Validate that the `Credit_History` column's missing values are replaced based on the `Loan_Status` condition.
 
 - **Test Case 3: Data Type Conversion**
-  - Confirm that the `Credit_History` and `Loan_Status` columns are converted to the correct data types (`object` and `int`, respectively).
+  - Confirm that the `Credit_History` column is converted to an object type and `Loan_Status` to an integer type in the training dataset.
 
 - **Test Case 4: One-Hot Encoding**
   - Verify that categorical columns are correctly one-hot encoded and that the resulting dataframe has the expected number of columns.
 
-- **Test Case 5: Data Splitting**
-  - Check that the data is split into training and validation sets with the correct proportions (70% training, 30% validation).
+- **Test Case 5: Data Concatenation**
+  - Check that the training and testing datasets are concatenated correctly and that the `Loan_ID` column is dropped.
 
 ### Model Training
 
-- **Test Case 6: Model Configuration and Grid Search**
-  - Validate that the grid search is performed with the correct parameter grid for each model (Logistic Regression, Decision Tree, Random Forest).
+- **Test Case 6: Data Partitioning**
+  - Validate that the training data is split into training and validation sets with the correct proportions (70% training, 30% validation).
 
-- **Test Case 7: Best Model Selection**
-  - Ensure that the model with the highest F1 score is selected as the best model.
+- **Test Case 7: Model Configuration**
+  - Ensure that the model configurations for Logistic Regression, Decision Tree, and Random Forest are set up correctly with the specified hyperparameters.
 
 ### Predictions
 
-- **Test Case 8: Probability Threshold Application**
-  - Confirm that the probability threshold is correctly applied to convert predicted probabilities into binary predictions.
+- **Test Case 8: Model Predictions**
+  - Verify that each model can make predictions on the validation set without errors and that the predictions are in the expected format (binary classification).
+
+- **Test Case 9: Probability Threshold Application**
+  - Confirm that the probability threshold is applied correctly to convert predicted probabilities into binary class predictions.
 
 ### Evaluation
 
-- **Test Case 9: Evaluation Metrics Calculation**
-  - Verify that precision, recall, F1 score, and PR-AUC are calculated correctly for each model.
+- **Test Case 10: Evaluation Metrics Calculation**
+  - Validate that precision, recall, F1 score, and PR-AUC are calculated correctly for each model.
 
-- **Test Case 10: Confusion Matrix Generation**
-  - Ensure that confusion matrices are generated correctly for each model and that they reflect the actual vs. predicted outcomes accurately.
+- **Test Case 11: Best Model Selection**
+  - Ensure that the model with the highest F1 score is correctly identified as the best model.
+
+- **Test Case 12: Confusion Matrix Generation**
+  - Verify that confusion matrices are generated correctly for each model and that they reflect the actual vs. predicted classifications.
 
 ### Visualization
 
-- **Test Case 11: Visualization Integrity**
-  - Validate that the visualizations (bar plots and confusion matrices) are generated without errors and display the expected data.
+- **Test Case 13: Visualization Integrity**
+  - Confirm that all visualizations (e.g., pie charts, bar plots, density plots) are generated without errors and display the expected data.
 
-### General
+- **Test Case 14: Graphviz Diagrams**
+  - Ensure that the Graphviz diagrams for the data processing flow and random forest structure are generated and displayed correctly.
 
-- **Test Case 12: No Remaining Missing Values**
-  - Confirm that there are no remaining missing values in the training and testing datasets after preprocessing.
-
-- **Test Case 13: Consistency Between Training and Testing Data**
-  - Ensure that the training and testing datasets have consistent columns after preprocessing and one-hot encoding.
-
-By implementing these test cases, you can ensure that the data preprocessing, model training, predictions, and evaluation processes are functioning correctly and producing reliable results.
+By executing these test cases, we can ensure that the code performs as expected across all stages of the machine learning pipeline, from data preprocessing to model evaluation.
