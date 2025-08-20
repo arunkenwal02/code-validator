@@ -3,54 +3,48 @@ To ensure the robustness and correctness of the code provided in the Jupyter Not
 ### Data Preprocessing
 
 - **Test Case 1: Data Import Validation**
-  - Verify that the training and testing datasets are imported correctly by checking the dimensions and ensuring no errors occur during import.
+  - Verify that the training and testing datasets are imported correctly by checking the dimensions and column names.
 
 - **Test Case 2: Missing Values Handling**
   - Ensure that missing values in the `Dependents`, `Self_Employed`, and `Loan_Amount_Term` columns are correctly replaced with '0', 'No', and 360, respectively.
-  - Validate that the `Credit_History` column's missing values are replaced based on the `Loan_Status` condition.
+  - Validate that the `Credit_History` missing values are replaced based on the `Loan_Status` condition.
 
 - **Test Case 3: Data Type Conversion**
-  - Confirm that the `Credit_History` column is converted to an object type and `Loan_Status` to an integer type in the training dataset.
+  - Confirm that the `Credit_History` column is converted to an object type in both training and testing datasets.
 
 - **Test Case 4: One-Hot Encoding**
-  - Verify that categorical columns are correctly one-hot encoded and that the resulting dataframe has the expected number of columns.
-
-- **Test Case 5: Data Concatenation**
-  - Check that the training and testing datasets are concatenated correctly and that the `Loan_ID` column is dropped.
+  - Check that categorical columns are correctly one-hot encoded and that the resulting dataframe has the expected number of columns.
 
 ### Model Training
 
-- **Test Case 6: Data Partitioning**
-  - Validate that the training data is split into training and validation sets with the correct proportions (70% training, 30% validation).
+- **Test Case 5: Data Partitioning**
+  - Validate that the data is split into training and validation sets with the correct proportions (70% training, 30% validation).
 
-- **Test Case 7: Model Configuration**
-  - Ensure that the model configurations for Logistic Regression, Decision Tree, and Random Forest are set up correctly with the specified hyperparameters.
+- **Test Case 6: Model Configuration**
+  - Ensure that the model configurations for Logistic Regression, Decision Tree, and Random Forest are set up with the correct parameters for grid search.
 
 ### Predictions
 
-- **Test Case 8: Model Predictions**
-  - Verify that each model can make predictions on the validation set without errors and that the predictions are in the expected format (binary classification).
+- **Test Case 7: Model Training and Prediction**
+  - Verify that each model (Logistic Regression, Decision Tree, Random Forest) is trained without errors and can make predictions on the validation set.
 
-- **Test Case 9: Probability Threshold Application**
-  - Confirm that the probability threshold is applied correctly to convert predicted probabilities into binary class predictions.
+- **Test Case 8: Probability Threshold Application**
+  - Confirm that the probability threshold is correctly applied to convert predicted probabilities into binary class predictions.
 
 ### Evaluation
 
-- **Test Case 10: Evaluation Metrics Calculation**
+- **Test Case 9: Evaluation Metrics Calculation**
   - Validate that precision, recall, F1 score, and PR-AUC are calculated correctly for each model.
 
-- **Test Case 11: Best Model Selection**
+- **Test Case 10: Best Model Selection**
   - Ensure that the model with the highest F1 score is correctly identified as the best model.
 
-- **Test Case 12: Confusion Matrix Generation**
+- **Test Case 11: Confusion Matrix Generation**
   - Verify that confusion matrices are generated correctly for each model and that they reflect the actual vs. predicted classifications.
 
 ### Visualization
 
-- **Test Case 13: Visualization Integrity**
-  - Confirm that all visualizations (e.g., pie charts, bar plots, density plots) are generated without errors and display the expected data.
+- **Test Case 12: Visualization Integrity**
+  - Check that all visualizations (e.g., bar plots, confusion matrices) are generated without errors and display the expected data.
 
-- **Test Case 14: Graphviz Diagrams**
-  - Ensure that the Graphviz diagrams for the data processing flow and random forest structure are generated and displayed correctly.
-
-By executing these test cases, we can ensure that the code performs as expected across all stages of the machine learning pipeline, from data preprocessing to model evaluation.
+By implementing these test cases, you can ensure that the code performs as expected across all stages of the machine learning pipeline, from data preprocessing to model evaluation.
