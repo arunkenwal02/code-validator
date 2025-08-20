@@ -1,53 +1,55 @@
-To ensure the robustness and correctness of the code provided in the Jupyter Notebook, the following test cases can be designed to validate various stages of the data processing, model training, predictions, and evaluation:
+To ensure the robustness and correctness of the code provided in the Jupyter Notebook, we can create a series of test cases that validate various aspects of the data preprocessing, model training, predictions, and evaluation processes. Here is a list of meaningful test cases:
 
 ### Data Preprocessing
 
 - **Test Case 1: Data Import Validation**
-  - Verify that the training and testing datasets are imported correctly by checking the dimensions and column names.
-  - Ensure that the datasets contain the expected number of rows and columns.
+  - Verify that the training and testing datasets are imported correctly by checking the dimensions and ensuring no errors occur during import.
 
 - **Test Case 2: Missing Values Handling**
-  - Confirm that missing values in the 'Dependents', 'Self_Employed', and 'Loan_Amount_Term' columns are replaced with '0', 'No', and '360', respectively.
-  - Validate that there are no remaining missing values in the datasets after preprocessing.
+  - Ensure that missing values in the `Dependents`, `Self_Employed`, and `Loan_Amount_Term` columns are correctly replaced with '0', 'No', and 360, respectively.
+  - Validate that the `Credit_History` missing values are replaced based on the `Loan_Status` condition.
 
 - **Test Case 3: Data Type Conversion**
-  - Check that the 'Credit_History' column is converted to an object type in both training and testing datasets.
-  - Ensure that the 'Loan_Status' column is converted to an integer type in the training dataset.
+  - Confirm that the `Credit_History` and `Loan_Status` columns are converted to the correct data types (`object` and `int`, respectively).
 
 - **Test Case 4: One-Hot Encoding**
   - Verify that categorical columns are correctly one-hot encoded and that the resulting dataframe has the expected number of columns.
-  - Ensure that the original categorical columns are removed after encoding.
+
+- **Test Case 5: Data Splitting**
+  - Check that the data is split into training and validation sets with the correct proportions (70% training, 30% validation).
 
 ### Model Training
 
-- **Test Case 5: Data Partitioning**
-  - Validate that the training data is split into training and validation sets with a 70-30 ratio.
-  - Check that the dimensions of the training and validation sets are as expected.
-
 - **Test Case 6: Model Configuration and Grid Search**
-  - Ensure that the grid search is configured with the correct hyperparameters for each model (Logistic Regression, Decision Tree, Random Forest).
-  - Verify that the grid search completes without errors and returns the best parameters for each model.
+  - Validate that the grid search is performed with the correct parameter grid for each model (Logistic Regression, Decision Tree, Random Forest).
+
+- **Test Case 7: Best Model Selection**
+  - Ensure that the model with the highest F1 score is selected as the best model.
 
 ### Predictions
 
-- **Test Case 7: Probability Predictions**
-  - Confirm that models capable of predicting probabilities (e.g., Logistic Regression, Random Forest) return valid probability values between 0 and 1.
-  - Validate that the thresholding logic correctly converts probabilities to binary predictions.
+- **Test Case 8: Probability Threshold Application**
+  - Confirm that the probability threshold is correctly applied to convert predicted probabilities into binary predictions.
 
 ### Evaluation
 
-- **Test Case 8: Evaluation Metrics Calculation**
+- **Test Case 9: Evaluation Metrics Calculation**
   - Verify that precision, recall, F1 score, and PR-AUC are calculated correctly for each model.
-  - Ensure that the evaluation metrics are within expected ranges and are consistent with the predictions.
 
-- **Test Case 9: Confusion Matrix Generation**
-  - Check that confusion matrices are generated correctly for each model and that they reflect the actual vs. predicted outcomes accurately.
-  - Validate that the confusion matrices are displayed correctly using heatmaps.
+- **Test Case 10: Confusion Matrix Generation**
+  - Ensure that confusion matrices are generated correctly for each model and that they reflect the actual vs. predicted outcomes accurately.
 
 ### Visualization
 
-- **Test Case 10: Visualization Integrity**
-  - Ensure that all visualizations (e.g., pie charts, bar plots, density plots) are generated without errors and display the expected data.
-  - Validate that the visualizations accurately represent the data and are labeled correctly.
+- **Test Case 11: Visualization Integrity**
+  - Validate that the visualizations (bar plots and confusion matrices) are generated without errors and display the expected data.
 
-By executing these test cases, you can ensure that the data preprocessing, model training, predictions, and evaluation processes are functioning as intended and producing reliable results.
+### General
+
+- **Test Case 12: No Remaining Missing Values**
+  - Confirm that there are no remaining missing values in the training and testing datasets after preprocessing.
+
+- **Test Case 13: Consistency Between Training and Testing Data**
+  - Ensure that the training and testing datasets have consistent columns after preprocessing and one-hot encoding.
+
+By implementing these test cases, you can ensure that the data preprocessing, model training, predictions, and evaluation processes are functioning correctly and producing reliable results.
