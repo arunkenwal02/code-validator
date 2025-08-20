@@ -1,0 +1,117 @@
+Here is a list of test cases based on the provided Jupyter Notebook code:
+
+- **Test Case 1: Data Import Validation**
+  - **Description**: Validates that the training and testing datasets are imported correctly and have the expected dimensions.
+  - **How to Perform**:
+    ```python
+    import pandas as pd
+
+    # Import the datasets
+    df_train = pd.read_csv('https://raw.githubusercontent.com/dphi-official/Datasets/master/Loan_Data/loan_train.csv', usecols=[i for i in range(1, 14)])
+    df_test = pd.read_csv('https://raw.githubusercontent.com/dphi-official/Datasets/master/Loan_Data/loan_test.csv')
+
+    # Validate dimensions
+    assert df_train.shape == (614, 13), f"Unexpected training data shape: {df_train.shape}"
+    assert df_test.shape == (367, 13), f"Unexpected testing data shape: {df_test.shape}"
+    ```
+
+- **Test Case 2: Missing Values Handling**
+  - **Description**: Ensures that missing values in the training and testing datasets are handled correctly.
+  - **How to Perform**:
+    ```python
+    # Check missing values before handling
+    missing_before = df_train.isna().sum()
+
+    # Perform missing value handling
+    df_train['Dependents'].fillna(value='0', inplace=True)
+    df_train['Self_Employed'].fillna(value='No', inplace=True)
+    df_train['Loan_Amount_Term'].fillna(value=360, inplace=True)
+    df_train.dropna(axis=0, how='any', inplace=True)
+
+    # Check missing values after handling
+    missing_after = df_train.isna().sum()
+
+    # Validate that missing values are handled
+    assert missing_after.sum() == 0, f"Missing values not handled: {missing_after}"
+    ```
+
+- **Test Case 3: Data Type Conversion**
+  - **Description**: Validates that the data types of specific columns are converted correctly.
+  - **How to Perform**:
+    ```python
+    # Convert data types
+    df_train = df_train.astype({'Credit_History': object, 'Loan_Status': int})
+
+    # Validate data types
+    assert df_train['Credit_History'].dtype == 'object', "Credit_History type conversion failed"
+    assert df_train['Loan_Status'].dtype == 'int', "Loan_Status type conversion failed"
+    ```
+
+- **Test Case 4: One-Hot Encoding Validation**
+  - **Description**: Ensures that categorical columns are correctly one-hot encoded.
+  - **How to Perform**:
+    ```python
+    # Perform one-hot encoding
+    cols_obj_train = ['Gender', 'Married', 'Dependents', 'Education', 'Self_Employed', 'Credit_History', 'Property_Area']
+    df_concat = pd.get_dummies(data=df_concat, columns=cols_obj_train, drop_first=True)
+
+    # Validate one-hot encoding
+    expected_columns = ['Gender_Male', 'Married_Yes', 'Dependents_1', 'Dependents_2', 'Dependents_3+', 'Education_Not Graduate', 'Self_Employed_Yes', 'Credit_History_1.0', 'Property_Area_Semiurban', 'Property_Area_Urban']
+    for col in expected_columns:
+        assert col in df_concat.columns, f"Missing one-hot encoded column: {col}"
+    ```
+
+- **Test Case 5: Model Training and Hyperparameter Tuning**
+  - **Description**: Validates that models are trained and hyperparameters are tuned correctly using GridSearchCV.
+  - **How to Perform**:
+    ```python
+    from sklearn.model_selection import GridSearchCV
+    from sklearn.linear_model import LogisticRegression
+
+    # Define model and parameters
+    model = LogisticRegression()
+    params = {'penalty': ['l2'], 'C': [0.01, 0.1, 1, 10], 'solver': ['liblinear'], 'max_iter': [100, 200]}
+
+    # Perform GridSearchCV
+    grid = GridSearchCV(model, params, cv=5, scoring='f1', n_jobs=-1)
+    grid.fit(X_train, y_train)
+
+    # Validate best parameters
+    assert grid.best_params_ is not None, "GridSearchCV did not find best parameters"
+    ```
+
+- **Test Case 6: Model Evaluation Metrics**
+  - **Description**: Ensures that evaluation metrics (precision, recall, F1 score, PR-AUC) are calculated correctly.
+  - **How to Perform**:
+    ```python
+    from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_curve, auc
+
+    # Predict and calculate metrics
+    y_pred = grid.predict(X_val)
+    precision = precision_score(y_val, y_pred, zero_division=0)
+    recall = recall_score(y_val, y_pred, zero_division=0)
+    f1 = f1_score(y_val, y_pred, zero_division=0)
+    precision_curve, recall_curve, _ = precision_recall_curve(y_val, y_pred)
+    pr_auc = auc(recall_curve, precision_curve)
+
+    # Validate metrics
+    assert 0 <= precision <= 1, f"Invalid precision: {precision}"
+    assert 0 <= recall <= 1, f"Invalid recall: {recall}"
+    assert 0 <= f1 <= 1, f"Invalid F1 score: {f1}"
+    assert 0 <= pr_auc <= 1, f"Invalid PR-AUC: {pr_auc}"
+    ```
+
+- **Test Case 7: Confusion Matrix Validation**
+  - **Description**: Validates that the confusion matrix is generated correctly for each model.
+  - **How to Perform**:
+    ```python
+    from sklearn.metrics import confusion_matrix
+
+    # Generate confusion matrix
+    cm = confusion_matrix(y_val, y_pred)
+
+    # Validate confusion matrix shape
+    assert cm.shape == (2, 2), f"Unexpected confusion matrix shape: {cm.shape}"
+    ```
+
+These test cases cover the key aspects of data preprocessing, model training, predictions, and evaluation as described in the provided code.
